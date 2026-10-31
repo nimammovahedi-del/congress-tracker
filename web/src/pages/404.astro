@@ -1,0 +1,45 @@
+---
+import Panel from "../components/Panel.astro";
+import Terminal from "../components/Terminal.astro";
+import Layout from "../layouts/Layout.astro";
+
+Astro.response.status = 404;
+---
+
+<Layout title="Signal lost" crumbs={["Error", "404"]}>
+  <div class="console">
+    <div class="cols cols-main-side">
+      <Panel>
+        <div class="panel-body lost">
+          <p class="label alert"><span data-scramble>Error_404 // Record not found</span></p>
+          <h1 class="cursor"><span data-scramble>Signal lost</span></h1>
+          <p class="intro">This page doesn't exist, or the record hasn't been indexed yet.</p>
+          <div class="links">
+            <a class="btn" href="/">Return to console ›</a>
+            <a class="btn ghost" href="/search">Search</a>
+          </div>
+        </div>
+      </Panel>
+      <Panel label="Diagnostics" code="0xERR">
+        <Terminal lines={[{ text: `Requested: ${Astro.url.pathname}` }, { text: "Searching index…" }, { text: "NO_RECORD_FOUND", tone: "alert" }]} />
+      </Panel>
+    </div>
+  </div>
+</Layout>
+
+<style>
+  .lost {
+    padding: clamp(22px, 3vw, 40px);
+  }
+  h1 {
+    margin: 10px 0 14px;
+  }
+  .intro {
+    color: #bdbdbd;
+  }
+  .links {
+    display: flex;
+    gap: 8px;
+    margin-top: 20px;
+  }
+</style>

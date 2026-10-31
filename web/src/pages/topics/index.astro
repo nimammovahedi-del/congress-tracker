@@ -1,0 +1,118 @@
+---
+import Panel from "../../components/Panel.astro";
+import SegBar from "../../components/SegBar.astro";
+import Layout from "../../layouts/Layout.astro";
+import { stat, type Topic } from "../../lib/db";
+
+const topics = (await stat<Topic[]>("topics")) ?? [];
+const largest = Math.max(1, ...topics.map((t) => t.bills));
+const total = topics.reduce((n, t) => n + t.bills, 0);
+---
+
+<Layout title="Topics" crumbs={["Directories", "Policy areas"]}>
+  <div class="console">
+    <Panel>
+      <div class="panel-body head">
+        <p class="label"><span data-scramble>Directories // Policy areas</span></p>
+        <h1 class="cursor"><span data-scramble>Browse by topic</span></h1>
+        <p class="intro">
+          Every bill is filed under one of {topics.length} policy areas by the Congressional Research Service. {total.toLocaleString("en-US")} measures indexed.
+        </p>
+      </div>
+    </Panel>
+
+    <div class="grid">
+      {
+        topics.map((t, i) => (
+          <a class="tile panel" href={`/topics/${t.slug}`} style={`--i:${Math.min(i, 8)}`}>
+            <div class="panel-frame">
+              <div class="tile-head">
+                <span class="label">DIR_{String(i + 1).padStart(2, "0")}</span>
+                <span class="label">{t.laws} enacted</span>
+              </div>
+              <h2>{t.area}</h2>
+              <div class="tile-num">
+                <span class="num-big" data-count={t.bills}>{t.bills.toLocaleString("en-US")}</span>
+                <span class="label">measures</span>
+              </div>
+              <SegBar value={t.bills} max={largest} cells={24} height={6} tone="bright" />
+              <ul>
+                {t.subjects.slice(0, 3).map((s) => (
+                  <li>&gt; {s.name}</li>
+                ))}
+              </ul>
+            </div>
+          </a>
+        ))
+      }
+    </div>
+  </div>
+</Layout>
+
+<style>
+  .head h1 {
+    margin: 10px 0 14px;
+  }
+  .intro {
+    max-width: 62ch;
+    padding-left: 16px;
+    border-left: 1px solid var(--line-2);
+    color: #bdbdbd;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+    gap: var(--gap);
+    margin-top: var(--gap);
+  }
+  .tile .panel-frame {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px 18px 18px;
+    transition:
+      border-color 140ms ease,
+      background 140ms ease;
+  }
+  .tile:hover .panel-frame {
+    border-color: var(--faint);
+    background: var(--panel-2);
+  }
+  .tile:hover {
+    color: inherit;
+  }
+  .tile-head {
+    display: flex;
+    justify-content: space-between;
+  }
+  h2 {
+    font-size: 1.3rem;
+    margin: 4px 0 0;
+    min-height: 2.1em;
+  }
+  .tile-num {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .num-big {
+    font: 300 2.4rem/1 var(--font);
+    letter-spacing: -0.04em;
+    color: var(--bright);
+  }
+  ul {
+    list-style: none;
+    margin: 4px 0 0;
+    padding: 0;
+    font: 400 0.72rem/1.8 var(--mono);
+    color: var(--faint);
+  }
+  li {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tile:hover li {
+    color: var(--muted);
+  }
+</style>

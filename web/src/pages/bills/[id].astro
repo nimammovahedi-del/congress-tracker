@@ -1,0 +1,445 @@
+---
+import Panel from "../../components/Panel.astro";
+import SegBar from "../../components/SegBar.astro";
+import StatusTag from "../../components/StatusTag.astro";
+import StatusTracker from "../../components/StatusTracker.astro";
+import VoteVisualizer from "../../components/VoteVisualizer.astro";
+import Layout from "../../layouts/Layout.astro";
+import { memberStats, memberVotes, row, rows, type Bill, type Member, type RollCall } from "../../lib/db";
+import { billNumber, billNumberFromId, consoleDate, memberTag, memberTitle, ordinal, partyClass, sanitizeHtml, slugify, textLinks } from "../../lib/format";
+import { passed, seatInfo } from "../../lib/votes";
+
+const id = Astro.params.id ?? "";
+const bill = await row<Bill>("SELECT * FROM bills WHERE id = ?", id);
+if (!bill) return Astro.rewrite("/404");
+
+const [sponsor, actions, cosponsors, subjects, related, cbo, rollCalls, pendingVotes] = await Promise.all([
+  bill.sponsor_id ? row<Member>("SELECT * FROM members WHERE bioguide_id = ?", bill.sponsor_id) : null,
+  // The source records some actions twice (once per reporting system); show each once.
+  rows<{ action_date: string; text: string }>(
+    "SELECT action_date, text FROM bill_actions WHERE bill_id = ? GROUP BY action_date, text ORDER BY MAX(seq) DESC",
+    id,
+  ),
+  rows<{ bioguide_id: string; full_name: string | null; party: string | null; state: string | null; district: number | null; chamber: string | null; sponsorship_date: string | null; withdrawn_date: string | null }>(
+    `SELECT c.bioguide_id, m.full_name, m.party, m.state, m.district, m.chamber, c.sponsorship_date, c.withdrawn_date
+       FROM bill_cosponsors c LEFT JOIN members m ON m.bioguide_id = c.bioguide_id
+      WHERE c.bill_id = ? ORDER BY c.withdrawn_date IS NOT NULL, c.sponsorship_date, m.last_name`,
+    id,
+  ),
+  rows<{ subject: string }>("SELECT subject FROM bill_subjects WHERE bill_id = ? ORDER BY subject", id),
+  rows<{ related_bill_id: string; relationship: string; title: string | null }>(
+    `SELECT r.related_bill_id, MIN(r.relationship) AS relationship, b.title
+       FROM related_bills r LEFT JOIN bills b ON b.id = r.related_bill_id
+      WHERE r.bill_id = ? GROUP BY r.related_bill_id ORDER BY r.related_bill_id LIMIT 20`,
+    id,
+  ),
+  rows<{ pub_date: string | null; title: string | null; url: string }>("SELECT pub_date, title, url FROM cbo_estimates WHERE bill_id = ? ORDER BY pub_date DESC", id),
+  rows<RollCall>("SELECT * FROM roll_calls WHERE bill_id = ? ORDER BY vote_date DESC, roll_number DESC", id),
+  // Votes the bill's history mentions that aren't in our vote data yet (Senate votes arrive
+  // from Voteview up to a month later).
+  rows<{ roll_call_id: string; action_date: string | null; action_text: string | null }>(
+    `SELECT v.roll_call_id, v.action_date, v.action_text FROM bill_vote_refs v
+      WHERE v.bill_id = ? AND v.roll_call_id NOT IN (SELECT id FROM roll_calls) ORDER BY v.action_date DESC`,
+    id,
+  ),
+]);
+
+// Show the most decisive vote in full: final passage if there was one, else the latest vote.
+const decisive = /passage|and pass|concur|agreeing to the (resolution|conference)|override|on the (joint |concurrent )?resolution/i;
+const keyVote = rollCalls.find((r) => decisive.test(r.question ?? "")) ?? rollCalls[0] ?? null;
+const [keyVotes, stats] = keyVote ? await Promise.all([memberVotes(keyVote.id), memberStats()]) : [[], []];
+
+const links = textLinks(bill.text_url);
+const active = cosponsors.filter((c) => !c.withdrawn_date);
+const byParty = ["D", "R", "I"].map((p) => ({ p, n: active.filter((c) => (c.party === "D" || c.party === "R" ? c.party : "I") === p).length }));
+const SHOWN = 20;
+const number = billNumber(bill.bill_type, bill.number);
+---
+
+<Layout title={`${number}: ${bill.title}`} description={bill.official_title ?? bill.title} crumbs={["Measures", number]}>
+  <div class="console">
+    <Panel class="head">
+      <div class="panel-body head-body">
+        <p class="label">
+          <span data-scramble>Measure_entry</span> <span class="faint">//</span> {ordinal(bill.congress)} Congress
+          {bill.law_number && <> <span class="faint">//</span> <span class="ok">Public Law {bill.law_number}</span></>}
+        </p>
+        <h1 class="measure cursor"><span data-scramble>{number}</span></h1>
+        <p class="title">{bill.title}</p>
+        {bill.official_title && bill.official_title !== bill.title && <p class="official">{bill.official_title}</p>}
+        <div class="meta">
+          <StatusTag status={bill.status} />
+          {bill.introduced_date && <span class="label">Introduced {consoleDate(bill.introduced_date)}</span>}
+          {bill.policy_area && <a class="toggle" href={`/topics/${slugify(bill.policy_area)}`}>{bill.policy_area}</a>}
+        </div>
+      </div>
+      <div class="panel-body">
+        <StatusTracker billType={bill.bill_type} status={bill.status} originChamber={bill.origin_chamber} />
+        {bill.latest_action_text && <p class="latest"><span class="label">Latest action · {consoleDate(bill.latest_action_date)}</span><br />{bill.latest_action_text}</p>}
+        <div class="links">
+          {links && <a class="btn" href={links.html} target="_blank" rel="noopener">Read bill text{bill.text_version ? ` · ${bill.text_version}` : ""} ↗</a>}
+          {links && <a class="btn ghost" href={links.pdf} target="_blank" rel="noopener">PDF ↗</a>}
+          <a class="btn ghost" href={bill.congress_gov_url} target="_blank" rel="noopener">Congress.gov ↗</a>
+        </div>
+      </div>
+    </Panel>
+
+    <div class="cols cols-main-side body">
+      <div class="stack">
+        <Panel label="Summary" code={bill.crs_summary ? "SRC: CRS" : "SRC: --"}>
+          <div class="panel-body">
+            {
+              bill.crs_summary ? (
+                <>
+                  <div class="prose" set:html={sanitizeHtml(bill.crs_summary)} />
+                  <p class="label source">
+                    Congressional Research Service · {bill.crs_summary_version ?? "summary"}{bill.crs_summary_date && <> · {consoleDate(bill.crs_summary_date)}</>}
+                  </p>
+                </>
+              ) : bill.ai_summary ? (
+                <>
+                  <div class="prose" set:html={sanitizeHtml(bill.ai_summary)} />
+                  <p class="label source">AI-written summary · may contain mistakes; check the official text</p>
+                </>
+              ) : (
+                <p class="empty">No official summary yet · read the official title or the bill text</p>
+              )
+            }
+          </div>
+        </Panel>
+
+        <Panel id="votes" class="viz-panel">
+          {
+            keyVote ? (
+              <>
+                <VoteVisualizer rollCall={keyVote} votes={keyVotes} seats={seatInfo(keyVotes, stats)} billTitle={bill.title} />
+                <div class="panel-body vote-actions">
+                  <a class="btn ghost" href={`/votes/${keyVote.id}`}>Open full vote record ›</a>
+                </div>
+              </>
+            ) : (
+              <>
+                <header class="panel-head"><span class="label">Roll call record</span></header>
+                {pendingVotes.length === 0 && (
+                  <p class="empty">No recorded roll-call votes · many measures pass by voice vote or unanimous consent</p>
+                )}
+              </>
+            )
+          }
+          {
+            pendingVotes.length > 0 && (
+              <div class="panel-body pending">
+                <p class="label">Senate votes awaiting member detail (arrives within ~1 month)</p>
+                {pendingVotes.map((v) => (
+                  <p class="pending-row"><span class="label">{consoleDate(v.action_date)}</span> {v.action_text}</p>
+                ))}
+              </div>
+            )
+          }
+          {
+            rollCalls.length > 1 && (
+              <div class="table-scroll other-votes">
+                <table class="rtable">
+                  <thead><tr><th>Ch</th><th>Roll</th><th>Question</th><th>Date</th><th class="num">Tally</th><th></th></tr></thead>
+                  <tbody>
+                    {rollCalls.map((r) => {
+                      const ok = passed(r);
+                      return (
+                        <tr data-href={`/votes/${r.id}`}>
+                          <td class="mono">{r.chamber === "senate" ? "S" : "H"}</td>
+                          <td class="mono">{r.roll_number}</td>
+                          <td class="subject"><a href={`/votes/${r.id}`}>{r.question}</a></td>
+                          <td class="mono">{consoleDate(r.vote_date)}</td>
+                          <td class="num">{r.yea}–{r.nay}</td>
+                          <td><i class={`dot ${ok === true ? "ok" : ok === false ? "alert" : ""}`} title={r.result ?? ""} /></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )
+          }
+        </Panel>
+
+        <Panel label="Legislative history" code={`${actions.length} ACTIONS`}>
+          <ol class="history">
+            {
+              actions.map((a, i) => (
+                <li class={i === 0 ? "now" : undefined}>
+                  <span class="label">{consoleDate(a.action_date)}</span>
+                  <span>{a.text}</span>
+                </li>
+              ))
+            }
+          </ol>
+        </Panel>
+      </div>
+
+      <div class="stack">
+        {
+          sponsor && (
+            <Panel label="Sponsor">
+              <a class="panel-body sponsor" href={`/members/${sponsor.bioguide_id}`}>
+                <span class="portrait">{sponsor.photo_url && <img src={sponsor.photo_url} alt="" loading="lazy" />}</span>
+                <span>
+                  <span class="label">{memberTitle(sponsor.chamber)}</span>
+                  <span class="sponsor-name">{sponsor.full_name}</span>
+                  <span class={`party ${partyClass(sponsor.party)}`}>{memberTag(sponsor)}</span>
+                </span>
+              </a>
+            </Panel>
+          )
+        }
+
+        <Panel label="Cosponsors" code={String(active.length).padStart(3, "0")}>
+          <div class="panel-body">
+            {
+              active.length ? (
+                <div class="mix">
+                  {byParty.filter((x) => x.n > 0).map((x) => (
+                    <div>
+                      <div class="mix-head">
+                        <span class={`party ${partyClass(x.p)}`}>{x.p === "D" ? "DEM" : x.p === "R" ? "REP" : "IND"}</span>
+                        <span class="label">{x.n}</span>
+                      </div>
+                      <SegBar value={x.n} max={active.length} cells={20} height={8} tone={x.p === "D" ? "dem" : x.p === "R" ? "rep" : "ind"} />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p class="empty">No cosponsors</p>
+              )
+            }
+            <ul class="people">
+              {
+                active.slice(0, SHOWN).map((c) => (
+                  <li>
+                    <a href={`/members/${c.bioguide_id}`}>{c.full_name ?? c.bioguide_id}</a>
+                    <span class={`party ${partyClass(c.party)}`}>{memberTag(c)}</span>
+                  </li>
+                ))
+              }
+            </ul>
+            {
+              active.length > SHOWN && (
+                <details>
+                  <summary>Show all {active.length}</summary>
+                  <ul class="people">
+                    {active.slice(SHOWN).map((c) => (
+                      <li>
+                        <a href={`/members/${c.bioguide_id}`}>{c.full_name ?? c.bioguide_id}</a>
+                        <span class={`party ${partyClass(c.party)}`}>{memberTag(c)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )
+            }
+          </div>
+        </Panel>
+
+        {
+          subjects.length > 0 && (
+            <Panel label="Subjects" code={`${subjects.length}`}>
+              <div class="panel-body chips">
+                {subjects.slice(0, 24).map((s) => (
+                  <span class="chip">{s.subject}</span>
+                ))}
+              </div>
+            </Panel>
+          )
+        }
+
+        {
+          cbo.length > 0 && (
+            <Panel label="Cost estimates" code="CBO">
+              <div class="panel-body rows-list">
+                {cbo.map((e) => (
+                  <div>
+                    <a href={e.url} target="_blank" rel="noopener">{e.title ?? "Estimate"} ↗</a>
+                    <span>{consoleDate(e.pub_date)}</span>
+                  </div>
+                ))}
+              </div>
+            </Panel>
+          )
+        }
+
+        {
+          related.length > 0 && (
+            <Panel label="Related measures" code={`${related.length}`}>
+              <div class="panel-body related">
+                {related.map((r) => (
+                  <a href={`/bills/${r.related_bill_id}`}>
+                    <span class="tag">{billNumberFromId(r.related_bill_id)}</span>
+                    <span class="rel-title">{r.title ?? ""}</span>
+                    <span class="label">{r.relationship}</span>
+                  </a>
+                ))}
+              </div>
+            </Panel>
+          )
+        }
+      </div>
+    </div>
+  </div>
+</Layout>
+
+<style>
+  .head-body {
+    padding: clamp(18px, 2.6vw, 32px);
+  }
+  .measure {
+    margin: 12px 0 8px;
+    font-size: clamp(2.8rem, 1.8rem + 3.6vw, 5.4rem);
+    font-weight: 600;
+    letter-spacing: -0.045em;
+  }
+  .title {
+    max-width: 50ch;
+    font-size: clamp(1.15rem, 1rem + 0.6vw, 1.6rem);
+    line-height: 1.25;
+    color: var(--bright);
+    letter-spacing: -0.015em;
+  }
+  .official {
+    max-width: 90ch;
+    color: var(--muted);
+    font-size: 0.92rem;
+  }
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
+    margin-top: 14px;
+  }
+  .latest {
+    margin: 22px 0 0;
+    max-width: 90ch;
+    color: #cfcfcf;
+  }
+  .links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 18px;
+  }
+  .body {
+    margin-top: var(--gap);
+  }
+  .source {
+    margin: 16px 0 0;
+  }
+  .vote-actions {
+    border-top: 1px solid var(--line);
+  }
+  .pending-row {
+    margin: 10px 0 0;
+    font-size: 0.9rem;
+  }
+  .other-votes {
+    border-top: 1px solid var(--line);
+    max-height: 340px;
+  }
+  .history {
+    list-style: none;
+    margin: 0;
+    padding: 4px var(--pad) var(--pad);
+    max-height: 520px;
+    overflow: auto;
+  }
+  .history li {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 14px;
+    padding: 11px 0;
+    border-bottom: 1px solid var(--line);
+    font-size: 0.9rem;
+    color: #bdbdbd;
+  }
+  .history li.now {
+    color: var(--bright);
+  }
+  .history li.now .label {
+    color: var(--ok);
+  }
+  .sponsor {
+    display: grid;
+    grid-template-columns: 84px 1fr;
+    gap: 14px;
+    align-items: center;
+  }
+  .portrait {
+    display: block;
+    aspect-ratio: 450 / 550;
+    border: 1px solid var(--line-2);
+    background: #0c0c0c;
+    overflow: hidden;
+  }
+  .portrait img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    filter: grayscale(1) contrast(1.06);
+    transition: filter 200ms ease;
+  }
+  .sponsor:hover .portrait img {
+    filter: none;
+  }
+  .sponsor > span:last-child {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .sponsor-name {
+    font-size: 1.15rem;
+    color: var(--bright);
+    letter-spacing: -0.01em;
+  }
+  .mix {
+    display: grid;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .mix-head {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .people {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .people li {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--line);
+    font-size: 0.88rem;
+  }
+  .related {
+    display: grid;
+    gap: 0;
+  }
+  .related a {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .related .label {
+    grid-column: 2;
+  }
+  .rel-title {
+    font-size: 0.86rem;
+    color: #c4c4c4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+</style>

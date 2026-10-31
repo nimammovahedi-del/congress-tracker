@@ -1,0 +1,30 @@
+---
+// A console panel: thin frame, corner brackets, and an optional header with a label on
+// the left and a small code on the right ("FINAL TALLY ........ 0xMRG_ANL").
+import type { HTMLAttributes } from "astro/types";
+
+interface Props extends HTMLAttributes<"section"> {
+  label?: string;
+  code?: string;
+  invert?: boolean;
+  plain?: boolean;
+}
+// `rest` carries the page's style-scope attribute, so a page can style its own panels.
+const { label, code, class: className, invert = false, plain = false, ...rest } = Astro.props;
+const hasHead = Boolean(label || code || Astro.slots.has("head"));
+---
+
+<section {...rest} class:list={["panel", className, invert && "invert", plain && "plain"]}>
+  <div class="panel-frame">
+    {
+      hasHead && (
+        <header class="panel-head">
+          {label && <span class="label">{label}</span>}
+          <slot name="head" />
+          {code && <span class="label faint">{code}</span>}
+        </header>
+      )
+    }
+    <slot />
+  </div>
+</section>

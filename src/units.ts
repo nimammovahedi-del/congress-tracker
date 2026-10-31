@@ -24,6 +24,8 @@ export interface UnitType {
 }
 
 export const UNIT_TYPES: UnitType[] = [
+  // Precomputed site figures go first: small, and every page uses them.
+  { prefix: "stat", table: "site_stats", key: "key", sortDate: null, children: [] },
   {
     prefix: "member",
     table: "members",

@@ -11,6 +11,7 @@
 //
 // The budget is spread across the day so later hourly runs still have room for fresh
 // updates. Updates to data already uploaded go first; then new data, newest first.
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { ROOT, nowIso, todayIso } from "./config.ts";
@@ -40,8 +41,24 @@ if ((one<{ n: number }>(db, "SELECT COUNT(*) AS n FROM published_units")?.n ?? 0
   if (remote.length) console.log(`Learned of ${remote.length} units already uploaded.`);
 }
 
-// 2. Work out today's allowance.
-let spent = Number(d1Query<{ value: string }>(`SELECT value FROM sync_state WHERE key = '${spendKey}'`)[0]?.value ?? 0);
+// 2. Bring the hosted database's tables and indexes in line with db/*.sql when they change,
+//    and work out today's allowance.
+const remoteState = new Map(
+  d1Query<{ key: string; value: string }>(
+    `SELECT key, value FROM sync_state WHERE key IN ('${spendKey}', 'schema-hash')`,
+  ).map((r) => [r.key, r.value]),
+);
+const schemaFiles = ["schema.sql", "site.sql"].map((f) => path.join(ROOT, "db", f));
+const schemaHash = createHash("sha1").update(schemaFiles.map((f) => fs.readFileSync(f, "utf8")).join("\n")).digest("hex");
+if (remoteState.get("schema-hash") !== schemaHash) {
+  for (const file of schemaFiles) d1ExecuteFile(file);
+  d1Query(
+    `INSERT INTO sync_state (key, value, updated_at) VALUES ('schema-hash', '${schemaHash}', '${nowIso()}') ` +
+      `ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+  );
+  console.log("Updated the hosted database's tables and indexes.");
+}
+let spent = Number(remoteState.get(spendKey) ?? 0);
 const hour = new Date().getUTCHours();
 const evenPace = Math.round((DAILY_BUDGET * (hour + 1)) / 24);
 const allowance = Math.min(DAILY_BUDGET - spent, evenPace - spent, RUN_LIMIT);

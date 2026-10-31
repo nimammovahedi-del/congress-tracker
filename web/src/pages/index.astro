@@ -1,0 +1,351 @@
+---
+import Panel from "../components/Panel.astro";
+import SegBar from "../components/SegBar.astro";
+import StatusTag from "../components/StatusTag.astro";
+import Terminal, { type Line } from "../components/Terminal.astro";
+import Layout from "../layouts/Layout.astro";
+import { BILL_LIST_COLUMNS, BILL_LIST_JOIN, row, rows, stat, type BillListItem, type RollCall, type Topic } from "../lib/db";
+import { addDays, billNumber, billNumberFromId, consoleDate, formatShortDate, formatDate, SITE_NAME } from "../lib/format";
+
+// "This week" is the 7 days ending on the latest day with any action, so the page stays
+// useful during recesses.
+const latest = (await row<{ d: string }>("SELECT MAX(latest_action_date) AS d FROM bills"))?.d ?? new Date().toISOString().slice(0, 10);
+const weekStart = addDays(latest, -6);
+const MOVED = "('passed_house', 'passed_senate', 'passed_both', 'presented', 'vetoed', 'agreed', 'became_law')";
+
+const [overview, moved, votes, laws, introduced, week, topics] = await Promise.all([
+  stat<{ bills: number; laws: number; votes: number; yea_total: number; nay_total: number; vote_pass_pct: number; members: number }>("overview"),
+  rows<BillListItem>(
+    `SELECT ${BILL_LIST_COLUMNS} FROM bills b ${BILL_LIST_JOIN}
+      WHERE b.status IN ${MOVED} AND b.status_date >= ? ORDER BY b.status_date DESC LIMIT 8`,
+    weekStart,
+  ),
+  rows<RollCall & { bill_title: string | null }>(
+    `SELECT r.*, b.title AS bill_title FROM roll_calls r LEFT JOIN bills b ON b.id = r.bill_id
+      ORDER BY r.vote_date DESC, r.roll_number DESC LIMIT 8`,
+  ),
+  rows<BillListItem>(
+    `SELECT ${BILL_LIST_COLUMNS} FROM bills b ${BILL_LIST_JOIN}
+      WHERE b.status = 'became_law' ORDER BY b.status_date DESC LIMIT 5`,
+  ),
+  rows<BillListItem>(
+    `SELECT ${BILL_LIST_COLUMNS} FROM bills b ${BILL_LIST_JOIN}
+      WHERE b.introduced_date >= ? ORDER BY b.introduced_date DESC, b.cosponsor_count DESC LIMIT 5`,
+    weekStart,
+  ),
+  row<{ introduced: number; moved: number; laws: number; votes: number }>(
+    `SELECT (SELECT COUNT(*) FROM bills WHERE introduced_date >= ?1) AS introduced,
+            (SELECT COUNT(*) FROM bills WHERE status IN ${MOVED} AND status_date >= ?1) AS moved,
+            (SELECT COUNT(*) FROM bills WHERE status = 'became_law' AND status_date >= ?1) AS laws,
+            (SELECT COUNT(*) FROM roll_calls WHERE vote_date >= ?1) AS votes`,
+    weekStart,
+  ),
+  stat<Topic[]>("topics"),
+]);
+
+const lines: Line[] = [
+  { text: `Window: ${consoleDate(weekStart)} → ${consoleDate(latest)}` },
+  { text: `${week?.introduced ?? 0} new bills and resolutions introduced` },
+  { text: `${week?.moved ?? 0} measures advanced past a chamber` },
+  { text: `${week?.laws ?? 0} signed into law this week · ${overview?.laws ?? 0} this Congress` },
+  { text: `${week?.votes ?? 0} roll-call votes recorded`, tone: "bright" },
+  ...(votes[0]
+    ? [{ text: `Latest: ${votes[0].chamber === "senate" ? "Senate" : "House"} roll ${votes[0].roll_number} · ${votes[0].result} ${votes[0].yea}–${votes[0].nay}`, tone: "bright" as const, href: `/votes/${votes[0].id}` }]
+    : []),
+  { text: "SYSTEM_READY_FOR_QUERY", tone: "ok" },
+];
+const yeaMax = Math.max(overview?.yea_total ?? 0, overview?.nay_total ?? 0, 1);
+const chamberOf = (type: string) => (type.startsWith("s") ? "S" : "H");
+---
+
+<Layout title={SITE_NAME}>
+  <div class="console">
+    <Panel class="hero">
+      <div class="panel-body hero-body">
+        <p class="label" data-scramble>Legislative intelligence // This week in Congress</p>
+        <h1 class="cursor"><span data-scramble>{SITE_NAME}</span></h1>
+        <p class="intro">
+          Free monitoring of every bill, roll-call vote, and member of the 119th United States Congress. Week of {formatShortDate(weekStart)} – {formatDate(latest)}.
+        </p>
+
+        <div class="aggregates">
+          <div class="agg">
+            <div class="agg-head">
+              <span class="label">Total yea aggregate</span>
+              <span class="agg-num" data-count={overview?.yea_total ?? 0}>{(overview?.yea_total ?? 0).toLocaleString("en-US")}</span>
+            </div>
+            <SegBar value={overview?.yea_total ?? 0} max={yeaMax} cells={34} tone="bright" label="Total yea votes cast this Congress" />
+          </div>
+          <div class="agg">
+            <div class="agg-head">
+              <span class="label">Total nay aggregate</span>
+              <span class="agg-num dimnum" data-count={overview?.nay_total ?? 0}>{(overview?.nay_total ?? 0).toLocaleString("en-US")}</span>
+            </div>
+            <SegBar value={overview?.nay_total ?? 0} max={yeaMax} cells={34} tone="dim" label="Total nay votes cast this Congress" />
+          </div>
+        </div>
+
+        <div class="cols cols-4 boxes">
+          <div class="statbox"><div class="label">Total measures</div><div class="value" data-count={overview?.bills ?? 0}>{(overview?.bills ?? 0).toLocaleString("en-US")}</div></div>
+          <div class="statbox"><div class="label">Enacted into law</div><div class="value" data-count={overview?.laws ?? 0}>{overview?.laws ?? 0}</div></div>
+          <div class="statbox"><div class="label">Roll calls</div><div class="value" data-count={overview?.votes ?? 0}>{(overview?.votes ?? 0).toLocaleString("en-US")}</div></div>
+          <div class="statbox"><div class="label">Vote pass rate</div><div class="value ok" data-count={overview?.vote_pass_pct ?? 0} data-decimals="1" data-suffix="%">{overview?.vote_pass_pct ?? 0}%</div></div>
+        </div>
+      </div>
+    </Panel>
+
+    <div class="cols row-2">
+      <Panel label="Activity log" code="0xWK_LOG">
+        <Terminal lines={lines} />
+      </Panel>
+      <Panel invert class="command-panel">
+        <form class="panel-body cmd" action="/search" role="search">
+          <label class="label" for="home-q">Command input // Search</label>
+          <div class="cmd-line">
+            <span>&gt;</span>
+            <input id="home-q" name="q" type="search" placeholder="bill, topic, H.R. 1, or member" autocomplete="off" />
+            <button class="go" type="submit" aria-label="Search">Enter</button>
+          </div>
+          <p class="hint">
+            Or <a href="/find">locate your representatives</a> · <a href="/votes">open the vote directory</a>
+          </p>
+        </form>
+      </Panel>
+    </div>
+
+    <div class="cols cols-2 tables">
+      <Panel label="Record queue // Bills on the move" code={`${moved.length} THIS WEEK`}>
+        {
+          moved.length ? (
+            <div class="table-scroll">
+              <table class="rtable">
+                <thead><tr><th>Ch</th><th>Measure</th><th>Subject</th><th>Status</th></tr></thead>
+                <tbody>
+                  {moved.map((b) => (
+                    <tr data-href={`/bills/${b.id}`}>
+                      <td class="mono">{chamberOf(b.bill_type)}</td>
+                      <td><a class="tag" href={`/bills/${b.id}`}>{billNumber(b.bill_type, b.number)}</a></td>
+                      <td class="subject">{b.title}</td>
+                      <td><StatusTag status={b.status} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p class="empty">No measures advanced this week</p>
+          )
+        }
+      </Panel>
+
+      <Panel label="Latest roll calls" code="0xRC_FEED">
+        <div class="table-scroll">
+          <table class="rtable">
+            <thead><tr><th>ID</th><th>Ch</th><th>Measure</th><th>Subject</th><th>Date</th><th></th></tr></thead>
+            <tbody>
+              {
+                votes.map((v) => (
+                  <tr data-href={`/votes/${v.id}`}>
+                    <td class="mono">{v.roll_number}</td>
+                    <td class="mono">{v.chamber === "senate" ? "S" : "H"}</td>
+                    <td><a class="tag" href={`/votes/${v.id}`}>{v.bill_id ? billNumberFromId(v.bill_id) : `ROLL ${v.roll_number}`}</a></td>
+                    <td class="subject">{v.bill_title ?? v.description ?? v.question}</td>
+                    <td class="mono">{consoleDate(v.vote_date)}</td>
+                    <td><i class={`dot ${/fail|reject|not |defeat/i.test(v.result ?? "") ? "alert" : "ok"}`} title={v.result ?? ""} /></td>
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
+        </div>
+        <p class="pager"><span>Showing 8 most recent</span><a href="/votes">Open directory →</a></p>
+      </Panel>
+
+      <Panel label="Enacted // Recently signed" code="0xPUB_LAW">
+        <div class="table-scroll">
+          <table class="rtable">
+            <thead><tr><th>Measure</th><th>Subject</th><th>Signed</th></tr></thead>
+            <tbody>
+              {
+                laws.map((b) => (
+                  <tr data-href={`/bills/${b.id}`}>
+                    <td><a class="tag" href={`/bills/${b.id}`}>{billNumber(b.bill_type, b.number)}</a></td>
+                    <td class="subject">{b.title}</td>
+                    <td class="mono">{consoleDate(b.status_date)}</td>
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+
+      <Panel label="Intake // Newly introduced" code={`${week?.introduced ?? 0} THIS WEEK`}>
+        {
+          introduced.length ? (
+            <div class="table-scroll">
+              <table class="rtable">
+                <thead><tr><th>Measure</th><th>Subject</th><th>Sponsor</th></tr></thead>
+                <tbody>
+                  {introduced.map((b) => (
+                    <tr data-href={`/bills/${b.id}`}>
+                      <td><a class="tag" href={`/bills/${b.id}`}>{billNumber(b.bill_type, b.number)}</a></td>
+                      <td class="subject">{b.title}</td>
+                      <td class="mono">
+                        {b.sponsor_name?.split(" ").at(-1)} <span class={`party ${b.sponsor_party === "D" ? "dem" : b.sponsor_party === "R" ? "rep" : "ind"}`}>{b.sponsor_party}-{b.sponsor_state}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p class="empty">No new bills this week</p>
+          )
+        }
+      </Panel>
+    </div>
+
+    <Panel label="Directories // Browse by topic" code="0xDIR_IDX">
+      <div class="panel-body topics">
+        {
+          (topics ?? []).slice(0, 16).map((t) => (
+            <a class="topic" href={`/topics/${t.slug}`}>
+              <span>{t.area}</span>
+              <span class="label">{t.bills.toLocaleString("en-US")}</span>
+            </a>
+          ))
+        }
+        <a class="topic all" href="/topics"><span>All directories</span><span class="label">→</span></a>
+      </div>
+    </Panel>
+  </div>
+</Layout>
+
+<style>
+  .console > :global(.panel) + :global(*),
+  .console > * + * {
+    margin-top: var(--gap);
+  }
+  .hero-body {
+    padding: clamp(20px, 3vw, 36px);
+  }
+  h1 {
+    margin: 10px 0 18px;
+    font-size: clamp(2.6rem, 1.6rem + 3.4vw, 5rem);
+  }
+  .intro {
+    max-width: 58ch;
+    padding: 2px 0 2px 16px;
+    border-left: 1px solid var(--line-2);
+    color: #bdbdbd;
+  }
+  .aggregates {
+    display: grid;
+    gap: 22px;
+    margin: 34px 0 30px;
+  }
+  .agg-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-bottom: 10px;
+  }
+  .agg-num {
+    font: 300 clamp(1.6rem, 1.2rem + 1.4vw, 2.4rem)/1 var(--mono);
+    letter-spacing: -0.02em;
+    color: var(--bright);
+    font-variant-numeric: tabular-nums;
+  }
+  .agg-num.dimnum {
+    color: #7d7d7d;
+  }
+  .boxes {
+    gap: 12px;
+  }
+  .row-2 {
+    grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr);
+  }
+  .cmd {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    height: 100%;
+    min-height: 200px;
+    padding: 26px;
+  }
+  .cmd-line {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 14px;
+    font: 500 1.4rem var(--mono);
+    border-bottom: 1px solid #c4c4c4;
+  }
+  .cmd-line input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    padding: 10px 0;
+    background: transparent;
+    color: #050505;
+    font: 500 1.05rem var(--mono);
+    caret-shape: block;
+  }
+  .cmd-line input::placeholder {
+    color: #9a9a9a;
+  }
+  .cmd-line input:focus-visible {
+    outline: none;
+  }
+  .go {
+    border: 1px solid #050505;
+    background: #050505;
+    color: #ececec;
+    font: 500 0.66rem var(--mono);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    padding: 8px 12px;
+    cursor: pointer;
+  }
+  .go:hover {
+    background: transparent;
+    color: #050505;
+  }
+  .hint {
+    margin: 16px 0 0;
+    font: 0.72rem var(--mono);
+    color: #555;
+  }
+  .hint a {
+    color: #050505;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .topics {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0 22px;
+  }
+  .topic {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 11px 0;
+    border-bottom: 1px solid var(--line);
+    font-size: 0.92rem;
+    color: #c8c8c8;
+  }
+  .topic:hover {
+    color: var(--bright);
+    border-bottom-color: var(--muted);
+  }
+  .topic.all {
+    color: var(--bright);
+  }
+  @media (max-width: 860px) {
+    .row-2 {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

@@ -1,0 +1,89 @@
+---
+// A segmented meter: a row of cells, lit in proportion to value / max. Cells light up one
+// after another when the page arrives.
+interface Props {
+  value: number;
+  max: number;
+  cells?: number;
+  tone?: "bright" | "dim" | "dem" | "rep" | "ind" | "ok" | "alert";
+  height?: number;
+  label?: string;
+}
+const { value, max, cells = 32, tone = "bright", height = 12, label } = Astro.props;
+const exact = max > 0 ? (value / max) * cells : 0;
+const lit = Math.floor(exact);
+const partial = exact - lit > 0.25 && lit < cells;
+---
+
+<div class={`segbar ${tone}`} style={`--n:${cells};--h:${height}px`} role="img" aria-label={label ?? `${value} of ${max}`}>
+  {Array.from({ length: cells }, (_, k) => <i class={k < lit ? "on" : k === lit && partial ? "part" : undefined} style={`--k:${k}`} />)}
+</div>
+
+<style>
+  .segbar {
+    display: grid;
+    grid-template-columns: repeat(var(--n), 1fr);
+    gap: 3px;
+  }
+  i {
+    height: var(--h);
+    background: #181818;
+  }
+  .bright i.on {
+    background: #f5f5f5;
+    box-shadow: 0 0 9px rgb(255 255 255 / 45%);
+  }
+  .bright i.part {
+    background: #8a8a8a;
+  }
+  .dim i.on {
+    background: #555;
+  }
+  .dim i.part {
+    background: #333;
+  }
+  .dem i.on {
+    background: var(--dem);
+    box-shadow: 0 0 9px rgb(74 108 255 / 50%);
+  }
+  .rep i.on {
+    background: var(--rep);
+    box-shadow: 0 0 9px rgb(255 69 69 / 50%);
+  }
+  .ind i.on {
+    background: var(--ind);
+    box-shadow: 0 0 9px rgb(148 104 250 / 50%);
+  }
+  .ok i.on {
+    background: var(--ok);
+    box-shadow: 0 0 9px rgb(61 220 132 / 45%);
+  }
+  .alert i.on {
+    background: var(--alert);
+    box-shadow: 0 0 9px rgb(255 77 77 / 45%);
+  }
+  .dem i.part,
+  .rep i.part,
+  .ind i.part,
+  .ok i.part,
+  .alert i.part {
+    background: #3a3a3a;
+  }
+  :global(.fx) i.on,
+  :global(.fx) i.part {
+    animation: cell 160ms ease both;
+    animation-delay: calc(260ms + var(--k) * 26ms);
+  }
+  @keyframes cell {
+    from {
+      background: #181818;
+      box-shadow: none;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :global(.fx) i.on,
+    :global(.fx) i.part {
+      animation: none;
+    }
+  }
+</style>

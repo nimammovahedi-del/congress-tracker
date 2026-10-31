@@ -1,0 +1,406 @@
+---
+import Panel from "../../components/Panel.astro";
+import Terminal from "../../components/Terminal.astro";
+import Layout from "../../layouts/Layout.astro";
+import { rows, type RollCall } from "../../lib/db";
+import { billNumberFromId, consoleDate, CONGRESS } from "../../lib/format";
+import { CATEGORY_SQL, passed, VOTE_CATEGORIES } from "../../lib/votes";
+
+const PAGE_SIZE = 50;
+const params = Astro.url.searchParams;
+const chamber = ["house", "senate"].includes(params.get("chamber") ?? "") ? params.get("chamber")! : "all";
+const result = ["passed", "failed"].includes(params.get("result") ?? "") ? params.get("result")! : "all";
+const session = ["1", "2"].includes(params.get("session") ?? "") ? params.get("session")! : "all";
+const category = VOTE_CATEGORIES.some((c) => c.key === params.get("category")) ? params.get("category")! : "all";
+const q = (params.get("q") ?? "").trim().slice(0, 80);
+const page = Math.max(1, Number(params.get("page") ?? 1) || 1);
+
+const where: string[] = ["r.congress = ?"];
+const args: (string | number)[] = [CONGRESS];
+if (chamber !== "all") (where.push("r.chamber = ?"), args.push(chamber));
+if (session !== "all") (where.push("r.session = ?"), args.push(Number(session)));
+if (category !== "all") (where.push(`(${CATEGORY_SQL}) = ?`), args.push(category));
+if (result === "passed") where.push("(r.result LIKE '%pass%' OR r.result LIKE '%agreed%' OR r.result LIKE '%confirmed%') AND r.result NOT LIKE '%not %'");
+if (result === "failed") where.push("(r.result LIKE '%fail%' OR r.result LIKE '%reject%' OR r.result LIKE '%defeat%' OR r.result LIKE '%not %')");
+if (q) {
+  where.push("(b.title LIKE ? OR r.description LIKE ? OR r.question LIKE ? OR r.subject_ref LIKE ?)");
+  args.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q.replaceAll(" ", "").replaceAll(".", "")}%`);
+}
+const whereSql = where.join(" AND ");
+
+const [records, counts, total] = await Promise.all([
+  rows<RollCall & { bill_title: string | null }>(
+    `SELECT r.*, b.title AS bill_title FROM roll_calls r LEFT JOIN bills b ON b.id = r.bill_id
+      WHERE ${whereSql} ORDER BY r.vote_date DESC, r.roll_number DESC LIMIT ? OFFSET ?`,
+    ...args,
+    PAGE_SIZE,
+    (page - 1) * PAGE_SIZE,
+  ),
+  rows<{ category: string; n: number }>(`SELECT ${CATEGORY_SQL} AS category, COUNT(*) AS n FROM roll_calls r WHERE r.congress = ? GROUP BY 1`, CONGRESS),
+  rows<{ n: number }>(`SELECT COUNT(*) AS n FROM roll_calls r LEFT JOIN bills b ON b.id = r.bill_id WHERE ${whereSql}`, ...args),
+]);
+const totalCount = total[0]?.n ?? 0;
+const allCount = counts.reduce((n, c) => n + c.n, 0);
+const pages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+
+const link = (changes: Record<string, string>) => {
+  const next = new URLSearchParams(params);
+  for (const [k, v] of Object.entries(changes)) {
+    if (v === "all" || v === "") next.delete(k);
+    else next.set(k, v);
+  }
+  if (!("page" in changes)) next.delete("page");
+  const s = next.toString();
+  return `/votes${s ? `?${s}` : ""}`;
+};
+const measure = (r: RollCall) => (r.bill_id ? billNumberFromId(r.bill_id) : r.subject_ref?.startsWith("PN") ? r.subject_ref : `ROLL ${r.roll_number}`);
+const activeFilters = [chamber, result, session !== "all" ? `session ${session}` : "all", category, q ? `"${q}"` : "all"].filter((f) => f !== "all");
+const inspect = Object.fromEntries(
+  records.map((r) => [
+    r.id,
+    {
+      m: measure(r),
+      t: r.bill_title ?? r.description ?? r.question ?? "",
+      q: r.question ?? "",
+      res: r.result ?? "",
+      ok: passed(r),
+      y: r.yea,
+      n: r.nay,
+      nv: r.present + r.not_voting,
+      d: consoleDate(r.vote_date),
+      c: r.chamber === "senate" ? "SENATE" : "HOUSE",
+      rn: r.roll_number,
+      s: `${r.congress}-${r.session}`,
+    },
+  ]),
+);
+---
+
+<Layout title="Vote directory" crumbs={["Votes", "Record queue"]}>
+  <div class="console">
+    <div class="cols cols-3">
+      <Panel label="Sys_nav">
+        <span slot="head" class="label">Link:ok <i class="dot ok"></i></span>
+        <div class="panel-body">
+          <p class="label">Active_context</p>
+          <p class="ctx">{CONGRESS}th Congress</p>
+          <div class="kv">
+            <div><span class="label">Sessions</span><div class="v">01–02</div></div>
+            <div><span class="label">Years</span><div class="v">2025–26</div></div>
+          </div>
+        </div>
+        <div class="panel-body">
+          <p class="label">Directories</p>
+          <ul class="dirs">
+            <li>
+              <a href={link({ category: "all" })} class={category === "all" ? "on" : undefined}>
+                <span>[ All_roll_calls ]</span><span>{allCount.toLocaleString("en-US")}</span>
+              </a>
+            </li>
+            {
+              VOTE_CATEGORIES.map((c) => (
+                <li>
+                  <a href={link({ category: c.key })} class={category === c.key ? "on" : undefined}>
+                    <span>[ {c.label} ]</span>
+                    <span>{(counts.find((x) => x.category === c.key)?.n ?? 0).toLocaleString("en-US")}</span>
+                  </a>
+                </li>
+              ))
+            }
+          </ul>
+        </div>
+      </Panel>
+
+      <Panel class="queue">
+        <div class="panel-body queue-head">
+          <div>
+            <h1 class="title">Record Queue</h1>
+            <p class="label">Displaying {records.length} of {totalCount.toLocaleString("en-US")} records</p>
+          </div>
+          <span class="label sort">Sort: descending</span>
+        </div>
+        <div class="panel-body filters">
+          <form class="command" action="/votes">
+            <span class="prompt">&gt;</span>
+            {chamber !== "all" && <input type="hidden" name="chamber" value={chamber} />}
+            {result !== "all" && <input type="hidden" name="result" value={result} />}
+            {session !== "all" && <input type="hidden" name="session" value={session} />}
+            {category !== "all" && <input type="hidden" name="category" value={category} />}
+            <input type="search" name="q" value={q} placeholder="search --rc  (bill, nominee, or question)" aria-label="Search roll calls" />
+          </form>
+          <div class="frow">
+            <span class="label">Chamber</span>
+            <div class="toggles">
+              {["all", "house", "senate"].map((c) => <a class:list={["toggle", chamber === c && "active"]} href={link({ chamber: c })}>{c}</a>)}
+            </div>
+          </div>
+          <div class="frow">
+            <span class="label">Result</span>
+            <div class="toggles">
+              {["all", "passed", "failed"].map((c) => <a class:list={["toggle", result === c && "active"]} href={link({ result: c })}>{c}</a>)}
+            </div>
+          </div>
+          <div class="frow">
+            <span class="label">Session</span>
+            <div class="toggles">
+              {["all", "1", "2"].map((c) => <a class:list={["toggle", session === c && "active"]} href={link({ session: c })}>{c === "all" ? "all" : `0${c}`}</a>)}
+            </div>
+          </div>
+          <div class="frow active-filters">
+            <span class="label">Active filters: <span class="v">{activeFilters.length ? activeFilters.join(" · ") : "none"}</span></span>
+            {activeFilters.length > 0 && <a class="label clear" href="/votes">Clear all</a>}
+          </div>
+        </div>
+        {
+          records.length ? (
+            <div class="table-scroll">
+              <table class="rtable">
+                <thead>
+                  <tr><th>ID</th><th>Ch</th><th>Measure</th><th>Subject</th><th>Date</th><th>Status</th></tr>
+                </thead>
+                <tbody>
+                  {records.map((r) => {
+                    const ok = passed(r);
+                    return (
+                      <tr data-href={`/votes/${r.id}`} data-vote={r.id}>
+                        <td class="mono">{r.roll_number}</td>
+                        <td class="mono">{r.chamber === "senate" ? "S" : "H"}</td>
+                        <td><a class="tag" href={`/votes/${r.id}`}>{measure(r)}</a></td>
+                        <td class="subject">{r.bill_title ?? r.description ?? r.question}</td>
+                        <td class="mono">{consoleDate(r.vote_date)}</td>
+                        <td><i class={`dot ${ok === true ? "ok" : ok === false ? "alert" : ""}`} title={r.result ?? ""} /></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p class="empty">No records match these filters</p>
+          )
+        }
+        <p class="pager">
+          <span>Page {page} / {pages}</span>
+          <span class="toggles">
+            {page > 1 && <a class="toggle" href={link({ page: String(page - 1) })}>‹ Prev</a>}
+            {page < pages && <a class="toggle" href={link({ page: String(page + 1) })}>Next ›</a>}
+          </span>
+        </p>
+      </Panel>
+
+      <Panel label="Inspector" class="inspector-panel">
+        <span slot="head" class="tag" data-v="id">---</span>
+        <div class="panel-body">
+          <div class="insp-top">
+            <span class="tag big-tag" data-v="m">Awaiting target</span>
+            <span class="status-tag neutral" data-v="res">---</span>
+          </div>
+          <p class="insp-title" data-v="t">Hover a record to inspect it</p>
+          <p class="label" data-v="q">--</p>
+        </div>
+        <div class="panel-body">
+          <div class="tally-box">
+            <p class="label center">Final_tally_analysis</p>
+            <div class="tally-row">
+              <div><span class="tnum" data-v="y">--</span><span class="label">Yea</span></div>
+              <div><span class="tnum dimnum" data-v="n">--</span><span class="label">Nay</span></div>
+            </div>
+            <div class="hatch"><span data-v="bar"></span></div>
+            <p class="label center" data-v="margin">Margin: --</p>
+          </div>
+          <div class="kv fields">
+            <div><span class="label">Date</span><div class="v" data-v="d">--</div></div>
+            <div><span class="label">Session</span><div class="v" data-v="s">--</div></div>
+            <div><span class="label">Chamber</span><div class="v" data-v="c">--</div></div>
+            <div><span class="label">Roll</span><div class="v" data-v="rn">--</div></div>
+            <div><span class="label">Didn't vote</span><div class="v" data-v="nv">--</div></div>
+          </div>
+          <a class="btn open" href="/votes" data-v="open" hidden>Open record ›</a>
+        </div>
+        <Terminal lines={[{ text: "Establishing secure connection…" }, { text: "Indexing roll call records…" }, { text: "Awaiting record designation…" }, { text: "INSPECTOR_READY", tone: "ok" }]} delay={600} />
+      </Panel>
+    </div>
+    <script type="application/json" id="inspect-data" set:html={JSON.stringify(inspect)} />
+  </div>
+</Layout>
+
+<script>
+  import { scramble } from "../../scripts/fx";
+
+  type Rec = { m: string; t: string; q: string; res: string; ok: boolean | null; y: number; n: number; nv: number; d: string; c: string; rn: number; s: string };
+  const data = JSON.parse(document.getElementById("inspect-data")?.textContent ?? "{}") as Record<string, Rec>;
+  const v = (k: string) => document.querySelector<HTMLElement>(`[data-v="${k}"]`)!;
+  let current = "";
+
+  function inspect(id: string) {
+    const r = data[id];
+    if (!r || id === current) return;
+    current = id;
+    document.querySelectorAll("tr.selected").forEach((tr) => tr.classList.remove("selected"));
+    document.querySelector(`tr[data-vote="${id}"]`)?.classList.add("selected");
+    v("id").textContent = `${r.c[0]}-${r.rn}`;
+    scramble(v("m"), r.m, 300);
+    const res = v("res");
+    res.textContent = r.res || "Recorded";
+    res.className = `status-tag ${r.ok === true ? "ok" : r.ok === false ? "alert" : "neutral"}`;
+    scramble(v("t"), r.t, 420);
+    scramble(v("q"), r.q, 380);
+    scramble(v("y"), String(r.y), 300);
+    scramble(v("n"), String(r.n), 300);
+    v("bar").style.width = `${r.y + r.n ? (100 * r.y) / (r.y + r.n) : 0}%`;
+    scramble(v("margin"), `Margin: ${r.y - r.n >= 0 ? "+" : ""}${r.y - r.n}`, 300);
+    for (const k of ["d", "s", "c", "rn", "nv"] as const) scramble(v(k), String(r[k]), 300);
+    const open = v("open") as HTMLAnchorElement;
+    open.href = `/votes/${id}`;
+    open.hidden = false;
+  }
+
+  document.querySelectorAll<HTMLTableRowElement>("tr[data-vote]").forEach((tr) => {
+    tr.addEventListener("mouseenter", () => inspect(tr.dataset.vote!));
+    tr.addEventListener("focusin", () => inspect(tr.dataset.vote!));
+  });
+  const first = document.querySelector<HTMLTableRowElement>("tr[data-vote]");
+  if (first && window.matchMedia("(min-width: 1100px)").matches) window.setTimeout(() => inspect(first.dataset.vote!), 700);
+</script>
+
+<style>
+  .ctx {
+    margin: 6px 0 16px;
+    font-size: 1.5rem;
+    letter-spacing: -0.02em;
+    color: var(--bright);
+  }
+  .dirs {
+    list-style: none;
+    margin: 10px 0 0;
+    padding: 0;
+  }
+  .dirs a {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    font: 400 0.72rem var(--mono);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+  .dirs a:hover {
+    color: var(--text);
+  }
+  .dirs a.on {
+    color: var(--bright);
+  }
+  .queue-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .title {
+    font-size: clamp(1.8rem, 1.4rem + 1.2vw, 2.4rem);
+    margin-bottom: 6px;
+  }
+  .sort {
+    border: 1px solid var(--line-2);
+    padding: 6px 9px;
+  }
+  .filters {
+    display: grid;
+    gap: 12px;
+    border-top: 1px solid var(--line);
+  }
+  .frow {
+    display: grid;
+    grid-template-columns: 90px 1fr;
+    align-items: center;
+    gap: 12px;
+  }
+  .active-filters {
+    display: flex;
+    justify-content: space-between;
+    padding-top: 8px;
+    border-top: 1px solid var(--line);
+  }
+  .active-filters .v {
+    color: var(--bright);
+  }
+  .clear:hover {
+    color: var(--bright);
+  }
+  .queue :global(.table-scroll) {
+    max-height: 62vh;
+  }
+  .insp-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+  }
+  .big-tag {
+    font-size: 0.86rem;
+    padding: 6px 10px;
+    color: var(--bright);
+  }
+  .insp-title {
+    margin: 16px 0 8px;
+    font-size: 1.3rem;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+    color: var(--bright);
+    min-height: 2.4em;
+  }
+  .tally-box {
+    position: relative;
+    padding: 14px;
+    border: 1px solid var(--line-2);
+    margin-bottom: 16px;
+  }
+  .center {
+    text-align: center;
+  }
+  .tally-row {
+    display: flex;
+    justify-content: space-between;
+    margin: 12px 0;
+  }
+  .tally-row > div {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .tally-row > div:last-child {
+    align-items: flex-end;
+  }
+  .tnum {
+    font: 300 2.4rem/1 var(--font);
+    letter-spacing: -0.04em;
+    color: var(--bright);
+  }
+  .dimnum {
+    color: #777;
+  }
+  .hatch {
+    height: 10px;
+    margin-bottom: 8px;
+    background: repeating-linear-gradient(135deg, #2b2b2b 0 2px, transparent 2px 5px);
+  }
+  .hatch span {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: repeating-linear-gradient(135deg, #e6e6e6 0 2px, transparent 2px 5px);
+    transition: width 420ms var(--ease);
+  }
+  .fields {
+    margin-bottom: 16px;
+  }
+  .open {
+    width: 100%;
+    justify-content: center;
+  }
+  @media (max-width: 1100px) {
+    .inspector-panel {
+      display: none;
+    }
+  }
+</style>

@@ -1,0 +1,137 @@
+---
+// The steps a bill or resolution goes through, drawn as a pipeline of nodes; the ones it
+// has reached are lit, and the final step glows green once it's law.
+interface Props {
+  billType: string;
+  status: string;
+  originChamber: string | null;
+}
+const { billType, status, originChamber } = Astro.props;
+
+const senateFirst = originChamber === "Senate" || billType.startsWith("s");
+const [first, second] = senateFirst ? ["Senate", "House"] : ["House", "Senate"];
+let steps: string[];
+let reached: number;
+
+if (billType === "hres" || billType === "sres") {
+  steps = ["Introduced", "Committee", "Agreed to"];
+  reached = status === "agreed" ? 2 : status === "reported" ? 1 : 0;
+} else if (billType === "hconres" || billType === "sconres") {
+  steps = ["Introduced", "Committee", `Passed ${first}`, `Passed ${second}`];
+  reached = { agreed: 3, passed_house: 2, passed_senate: 2, reported: 1 }[status] ?? 0;
+} else {
+  steps = ["Introduced", "Committee", `Passed ${first}`, `Passed ${second}`, "To President", "Law"];
+  reached =
+    { became_law: 5, presented: 4, vetoed: 4, passed_both: 3, passed_house: 2, passed_senate: 2, reported: 1 }[status] ?? 0;
+}
+const stopped = status === "vetoed" || status === "failed";
+---
+
+<ol class="pipeline" aria-label="Progress" style={`--n:${steps.length}`}>
+  {
+    steps.map((label, i) => (
+      <li
+        class:list={[
+          i <= reached && "done",
+          i === reached && "current",
+          i === reached && stopped && "stopped",
+          i === steps.length - 1 && i <= reached && "final",
+        ]}
+        style={`--k:${i}`}
+      >
+        <span class="node" />
+        <span class="label">
+          {String(i + 1).padStart(2, "0")} {i === reached && status === "vetoed" ? "Vetoed" : i === reached && status === "failed" ? `${label} · failed` : label}
+        </span>
+      </li>
+    ))
+  }
+</ol>
+
+<style>
+  .pipeline {
+    display: grid;
+    grid-template-columns: repeat(var(--n), 1fr);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  li {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-right: 8px;
+  }
+  li::before {
+    content: "";
+    position: absolute;
+    top: 5px;
+    left: 12px;
+    right: 0;
+    height: 1px;
+    background: var(--line-2);
+  }
+  li:last-child::before {
+    display: none;
+  }
+  li.done:not(.current)::before {
+    background: var(--bright);
+  }
+  .node {
+    position: relative;
+    z-index: 1;
+    width: 11px;
+    height: 11px;
+    border: 1px solid var(--faint);
+    background: var(--bg);
+  }
+  li.done .node {
+    background: var(--bright);
+    border-color: var(--bright);
+    box-shadow: 0 0 10px rgb(255 255 255 / 40%);
+  }
+  li.final .node {
+    background: var(--ok);
+    border-color: var(--ok);
+    box-shadow: 0 0 10px rgb(61 220 132 / 60%);
+  }
+  li.stopped .node {
+    background: var(--alert);
+    border-color: var(--alert);
+    box-shadow: 0 0 10px rgb(255 77 77 / 60%);
+  }
+  .label {
+    color: var(--faint);
+  }
+  li.done .label {
+    color: var(--text);
+  }
+  li.current .label {
+    color: var(--bright);
+  }
+  :global(.fx) li.done .node {
+    animation: node-on 200ms ease both;
+    animation-delay: calc(350ms + var(--k) * 110ms);
+  }
+  @keyframes node-on {
+    from {
+      background: var(--bg);
+      border-color: var(--faint);
+      box-shadow: none;
+    }
+  }
+  @media (max-width: 640px) {
+    .pipeline {
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+    li {
+      flex-direction: row;
+      align-items: center;
+    }
+    li::before {
+      display: none;
+    }
+  }
+</style>

@@ -1,0 +1,76 @@
+---
+import Panel from "../components/Panel.astro";
+import Layout from "../layouts/Layout.astro";
+import { lastSync } from "../lib/db";
+import { ago, SITE_NAME } from "../lib/format";
+
+const synced = await lastSync();
+---
+
+<Layout title="About the data" crumbs={["System", "About"]}>
+  <div class="console">
+    <Panel>
+      <div class="panel-body head">
+        <p class="label"><span data-scramble>System // Documentation</span></p>
+        <h1 class="cursor"><span data-scramble>About the data</span></h1>
+        <p class="intro">
+          {SITE_NAME} is a free, independent tracker of the U.S. Congress. It isn't affiliated with Congress or any government agency. Data refreshes every hour; the last refresh was {ago(synced).toLowerCase()}.
+        </p>
+      </div>
+    </Panel>
+
+    <div class="cols cols-2 docs">
+      <Panel label="Sources" code="0xSRC">
+        <div class="panel-body prose">
+          <ul>
+            <li><strong>Bills and resolutions:</strong> Congress.gov data via GovInfo's BILLSTATUS bulk files (public domain): status, actions, sponsors, cosponsors, subjects, committees, and CRS summaries.</li>
+            <li><strong>House votes:</strong> Office of the Clerk, U.S. House of Representatives.</li>
+            <li><strong>Senate votes and DW-NOMINATE scores:</strong> Lewis, Jeffrey B., Keith Poole, Howard Rosenthal, Adam Boche, Aaron Rudkin, and Luke Sonnet. <em>Voteview: Congressional Roll-Call Votes Database.</em> <a class="link" href="https://voteview.com/" rel="noopener">voteview.com</a>. Senate member-level votes can trail the Senate by up to a month.</li>
+            <li><strong>Members, contact details, and portraits:</strong> the @unitedstates project's congress-legislators data and official member photos (public domain).</li>
+            <li><strong>Regulations and executive orders:</strong> the Federal Register API.</li>
+            <li><strong>District lookup:</strong> the U.S. Census Bureau geocoder.</li>
+          </ul>
+        </div>
+      </Panel>
+
+      <Panel label="Method" code="0xMTD">
+        <div class="panel-body prose">
+          <ul>
+            <li><strong>Status</strong> comes from each bill's official action codes: introduced, reported by committee, passed one chamber, passed both, sent to the President, vetoed, or became law. Resolutions are "agreed to" when adopted.</li>
+            <li><strong>Party alignment</strong> uses the standard party-unity measure: on votes where most Democrats and most Republicans voted opposite ways, how often a member sided with their party. Independents are counted with Democrats, with whom both current Independents caucus.</li>
+            <li><strong>Thresholds</strong> reflect each vote's rule: a simple majority, two-thirds for House suspension votes, or 60 senators for cloture.</li>
+            <li><strong>Vice-presidential tie-breakers</strong> aren't part of member-level vote records; the official result is shown with each tally.</li>
+            <li><strong>Summaries</strong> are written by the nonpartisan Congressional Research Service. Any AI-written summary will be labelled as such.</li>
+          </ul>
+        </div>
+      </Panel>
+
+      <Panel label="Privacy" code="0xPRV">
+        <div class="panel-body prose">
+          <p>There are no accounts, ads, or trackers. Addresses entered on <a class="link" href="/find">Find my rep</a> are sent only to the Census Bureau's geocoder to find your district, and aren't stored or logged.</p>
+        </div>
+      </Panel>
+
+      <Panel label="Credits" code="0xCRD">
+        <div class="panel-body prose">
+          <p>Typefaces: Switzer by Indian Type Foundry (ITF Free Font License) and Reddit Mono (SIL Open Font License). Interface inspired by the console aesthetic of data-monitoring tools.</p>
+        </div>
+      </Panel>
+    </div>
+  </div>
+</Layout>
+
+<style>
+  .head h1 {
+    margin: 10px 0 14px;
+  }
+  .intro {
+    max-width: 66ch;
+    padding-left: 16px;
+    border-left: 1px solid var(--line-2);
+    color: #bdbdbd;
+  }
+  .docs {
+    margin-top: var(--gap);
+  }
+</style>

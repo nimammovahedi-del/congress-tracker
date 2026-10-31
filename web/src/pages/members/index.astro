@@ -1,0 +1,269 @@
+---
+import Panel from "../../components/Panel.astro";
+import Layout from "../../layouts/Layout.astro";
+import { memberStats, rows } from "../../lib/db";
+import { memberTag, partyClass, STATES } from "../../lib/format";
+
+const [members, stats] = await Promise.all([
+  rows<{ bioguide_id: string; full_name: string; last_name: string | null; party: string | null; state: string | null; district: number | null; chamber: string | null; photo_url: string | null }>(
+    `SELECT bioguide_id, full_name, last_name, party, state, district, chamber, photo_url
+       FROM members WHERE in_office = 1 ORDER BY state, chamber DESC, district, last_name`,
+  ),
+  memberStats(),
+]);
+const byId = new Map(stats.map((s) => [s.id, s]));
+const count = (f: (m: (typeof members)[number]) => boolean) => members.filter(f).length;
+const states = [...new Set(members.map((m) => m.state).filter((s): s is string => !!s))].sort();
+const pct = (n: number | null | undefined) => (n === null || n === undefined ? "--" : `${n}%`);
+const inspect = Object.fromEntries(
+  members.map((m) => {
+    const s = byId.get(m.bioguide_id);
+    return [m.bioguide_id, { n: m.full_name, tag: memberTag(m), c: m.chamber, ph: m.photo_url, u: s?.party_unity_pct ?? null, mi: s?.missed_pct ?? null, sp: s?.sponsored ?? 0, co: s?.cosponsored ?? 0, b: s?.bipartisan_pct ?? null, t: s?.terms ?? 0, si: s?.since ?? null }];
+  }),
+);
+---
+
+<Layout title="Members of Congress" crumbs={["Members", "Registry"]}>
+  <div class="console">
+    <div class="cols cols-3">
+      <Panel label="Filters">
+        <div class="panel-body filt">
+          <p class="label">Chamber</p>
+          <div class="toggles" data-group="chamber">
+            <button class="toggle active" type="button" data-v="">All {members.length}</button>
+            <button class="toggle" type="button" data-v="house">House {count((m) => m.chamber === "house")}</button>
+            <button class="toggle" type="button" data-v="senate">Senate {count((m) => m.chamber === "senate")}</button>
+          </div>
+          <p class="label">Party</p>
+          <div class="toggles" data-group="party">
+            <button class="toggle active" type="button" data-v="">All</button>
+            <button class="toggle" type="button" data-v="D">Dem {count((m) => m.party === "D")}</button>
+            <button class="toggle" type="button" data-v="R">Rep {count((m) => m.party === "R")}</button>
+            <button class="toggle" type="button" data-v="I">Ind {count((m) => m.party !== "D" && m.party !== "R")}</button>
+          </div>
+          <p class="label">State</p>
+          <select data-group-select="state" aria-label="State">
+            <option value="">All states</option>
+            {states.map((s) => <option value={s}>{STATES[s] ?? s}</option>)}
+          </select>
+          <a class="btn ghost locate" href="/find">Locate my reps ›</a>
+        </div>
+      </Panel>
+
+      <Panel class="registry">
+        <div class="panel-body head">
+          <div>
+            <h1 class="title">Member Registry</h1>
+            <p class="label"><span data-shown>{members.length}</span> of {members.length} members serving</p>
+          </div>
+        </div>
+        <div class="panel-body tools">
+          <label class="command">
+            <span class="prompt">&gt;</span>
+            <input type="search" placeholder="locate --member  (name or state)" data-search aria-label="Search members" />
+          </label>
+        </div>
+        <div class="table-scroll">
+          <table class="rtable">
+            <thead>
+              <tr><th></th><th>Member</th><th>Seat</th><th class="num">Party unity</th><th class="num">Missed</th><th class="num">Sponsored</th></tr>
+            </thead>
+            <tbody>
+              {
+                members.map((m) => {
+                  const s = byId.get(m.bioguide_id);
+                  const p = m.party === "D" || m.party === "R" ? m.party : "I";
+                  return (
+                    <tr
+                      data-href={`/members/${m.bioguide_id}`}
+                      data-id={m.bioguide_id}
+                      data-chamber={m.chamber}
+                      data-party={p}
+                      data-state={m.state}
+                      data-q={`${m.full_name} ${m.state} ${STATES[m.state ?? ""] ?? ""}`.toLowerCase()}
+                    >
+                      <td class="thumb">{m.photo_url && <img src={m.photo_url} alt="" loading="lazy" decoding="async" />}</td>
+                      <td><a href={`/members/${m.bioguide_id}`}>{m.full_name}</a></td>
+                      <td class="mono"><span class={`party ${partyClass(p)}`}>{memberTag(m)}</span> <span class="faint">{m.chamber === "senate" ? "SEN" : "REP"}</span></td>
+                      <td class="num">{pct(s?.party_unity_pct)}</td>
+                      <td class="num">{pct(s?.missed_pct)}</td>
+                      <td class="num">{s?.sponsored ?? 0}</td>
+                    </tr>
+                  );
+                })
+              }
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+
+      <Panel label="Node_inspector" class="insp">
+        <div class="panel-body">
+          <div class="viewfinder">
+            <img alt="" hidden data-k="ph" />
+            <span class="cross" aria-hidden="true"></span>
+            <span class="label nosignal" data-k="signal">No signal</span>
+          </div>
+          <p class="name" data-k="n">Awaiting target…</p>
+          <p class="label" data-k="tag">--</p>
+          <div class="rows-list">
+            <div><span>Party alignment</span><span data-k="u">--</span></div>
+            <div><span>Missed votes</span><span data-k="mi">--</span></div>
+            <div><span>Sponsored</span><span data-k="sp">--</span></div>
+            <div><span>Cosponsored</span><span data-k="co">--</span></div>
+            <div><span>Bipartisan bills</span><span data-k="b">--</span></div>
+            <div><span>Tenure</span><span data-k="t">--</span></div>
+          </div>
+        </div>
+      </Panel>
+    </div>
+    <script type="application/json" id="member-data" set:html={JSON.stringify(inspect)} />
+  </div>
+</Layout>
+
+<script>
+  import { scramble } from "../../scripts/fx";
+
+  type M = { n: string; tag: string; c: string; ph: string | null; u: number | null; mi: number | null; sp: number; co: number; b: number | null; t: number; si: string | null };
+  const data = JSON.parse(document.getElementById("member-data")?.textContent ?? "{}") as Record<string, M>;
+  const rows = [...document.querySelectorAll<HTMLTableRowElement>("tbody tr[data-id]")];
+  const filters: Record<string, string> = { chamber: "", party: "", state: "" };
+  const search = document.querySelector<HTMLInputElement>("[data-search]");
+  const shown = document.querySelector("[data-shown]");
+
+  const apply = () => {
+    const q = (search?.value ?? "").trim().toLowerCase();
+    let n = 0;
+    for (const tr of rows) {
+      const ok =
+        (!filters.chamber || tr.dataset.chamber === filters.chamber) &&
+        (!filters.party || tr.dataset.party === filters.party) &&
+        (!filters.state || tr.dataset.state === filters.state) &&
+        (!q || tr.dataset.q!.includes(q));
+      tr.hidden = !ok;
+      if (ok) n++;
+    }
+    if (shown) shown.textContent = String(n);
+  };
+  document.querySelectorAll<HTMLElement>("[data-group]").forEach((group) => {
+    const buttons = group.querySelectorAll<HTMLButtonElement>("button");
+    buttons.forEach((b) =>
+      b.addEventListener("click", () => {
+        filters[group.dataset.group!] = b.dataset.v ?? "";
+        buttons.forEach((x) => x.classList.toggle("active", x === b));
+        apply();
+      }),
+    );
+  });
+  // (Typed loosely: Cloudflare's server-side types clash with the DOM's HTMLSelectElement.)
+  const stateSelect = document.querySelector<HTMLElement & { value: string }>("[data-group-select=state]");
+  stateSelect?.addEventListener("change", () => {
+    filters.state = stateSelect.value;
+    apply();
+  });
+  search?.addEventListener("input", apply);
+
+  const k = (key: string) => document.querySelector<HTMLElement>(`[data-k="${key}"]`)!;
+  let current = "";
+  const show = (id: string) => {
+    const m = data[id];
+    if (!m || id === current) return;
+    current = id;
+    scramble(k("n"), m.n.toUpperCase(), 360);
+    scramble(k("tag"), `${m.c === "senate" ? "Senator" : "Representative"} · ${m.tag}`, 320);
+    scramble(k("u"), m.u === null ? "--" : `${m.u}%`, 280);
+    scramble(k("mi"), m.mi === null ? "--" : `${m.mi}%`, 280);
+    scramble(k("sp"), `${m.sp} bills`, 280);
+    scramble(k("co"), `${m.co} bills`, 280);
+    scramble(k("b"), m.b === null ? "--" : `${m.b}%`, 280);
+    scramble(k("t"), m.t ? `${m.t} terms · since ${m.si}` : "--", 280);
+    const img = k("ph") as HTMLImageElement;
+    k("signal").hidden = Boolean(m.ph);
+    if (m.ph) {
+      img.src = m.ph;
+      img.hidden = false;
+    } else img.hidden = true;
+  };
+  rows.forEach((tr) => tr.addEventListener("mouseenter", () => show(tr.dataset.id!)));
+</script>
+
+<style>
+  .filt {
+    display: grid;
+    gap: 10px;
+  }
+  .filt .label {
+    margin-top: 8px;
+  }
+  .locate {
+    margin-top: 14px;
+    justify-content: center;
+  }
+  .title {
+    font-size: clamp(1.8rem, 1.4rem + 1.2vw, 2.4rem);
+    margin-bottom: 6px;
+  }
+  .tools {
+    border-top: 1px solid var(--line);
+  }
+  .registry :global(.table-scroll) {
+    max-height: 70vh;
+  }
+  .thumb {
+    width: 44px;
+    padding-right: 0 !important;
+  }
+  .thumb img {
+    width: 30px;
+    height: 37px;
+    object-fit: cover;
+    filter: grayscale(1);
+    border: 1px solid var(--line-2);
+  }
+  tr:hover .thumb img {
+    filter: none;
+  }
+  .viewfinder {
+    position: relative;
+    aspect-ratio: 450 / 550;
+    border: 1px solid var(--line-2);
+    background:
+      linear-gradient(var(--line), var(--line)) 50% 0 / 1px 100% no-repeat,
+      linear-gradient(var(--line), var(--line)) 0 50% / 100% 1px no-repeat,
+      #070707;
+    overflow: hidden;
+  }
+  .viewfinder img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    filter: grayscale(1) contrast(1.08);
+  }
+  .cross {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 26px;
+    height: 26px;
+    margin: -13px 0 0 -13px;
+    border: 1px solid var(--faint);
+    border-radius: 50%;
+  }
+  .nosignal {
+    position: absolute;
+    left: 8px;
+    bottom: 6px;
+  }
+  .name {
+    margin: 14px 0 4px;
+    font: 500 1.1rem/1.2 var(--font);
+    color: var(--bright);
+  }
+  @media (max-width: 1100px) {
+    .insp {
+      display: none;
+    }
+  }
+</style>

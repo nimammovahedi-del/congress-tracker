@@ -1,0 +1,18 @@
+// Cloudflare settings for the website (a Worker in the CongressZ account).
+// It reads the same D1 database the data pipeline uploads to.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "congress-tracker",
+  "main": "@astrojs/cloudflare/entrypoints/server",
+  "account_id": "7a02b1498e81a67465d9f408c1eda468",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "congress-tracker",
+      "database_id": "cc4ee772-0ebd-4a46-b7bb-0098070dedc0"
+    }
+  ],
+  "observability": { "enabled": true }
+}

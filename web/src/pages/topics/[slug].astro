@@ -1,0 +1,188 @@
+---
+import Panel from "../../components/Panel.astro";
+import SegBar from "../../components/SegBar.astro";
+import StatusTag from "../../components/StatusTag.astro";
+import Layout from "../../layouts/Layout.astro";
+import { BILL_LIST_COLUMNS, BILL_LIST_JOIN, row, rows, stat, type BillListItem, type Topic } from "../../lib/db";
+import { billNumber, consoleDate, partyClass } from "../../lib/format";
+
+const topics = (await stat<Topic[]>("topics")) ?? [];
+const topic = topics.find((t) => t.slug === Astro.params.slug);
+if (!topic) return Astro.rewrite("/404");
+
+const PAGE = 30;
+const params = Astro.url.searchParams;
+const subject = topic.subjects.find((s) => s.slug === params.get("subject")) ?? null;
+const status = ["advanced", "law"].includes(params.get("status") ?? "") ? params.get("status")! : "all";
+const page = Math.max(1, Number(params.get("page") ?? 1) || 1);
+
+const where = ["b.policy_area = ?"];
+const args: (string | number)[] = [topic.area];
+if (subject) (where.push("b.id IN (SELECT bill_id FROM bill_subjects WHERE subject = ?)"), args.push(subject.name));
+if (status === "law") where.push("b.status = 'became_law'");
+if (status === "advanced") where.push("b.status NOT IN ('introduced', 'reported', 'failed')");
+const whereSql = where.join(" AND ");
+
+const [bills, count] = await Promise.all([
+  rows<BillListItem>(
+    `SELECT ${BILL_LIST_COLUMNS} FROM bills b ${BILL_LIST_JOIN} WHERE ${whereSql}
+      ORDER BY b.latest_action_date DESC LIMIT ? OFFSET ?`,
+    ...args,
+    PAGE,
+    (page - 1) * PAGE,
+  ),
+  row<{ n: number }>(`SELECT COUNT(*) AS n FROM bills b WHERE ${whereSql}`, ...args),
+]);
+const total = count?.n ?? 0;
+const pages = Math.max(1, Math.ceil(total / PAGE));
+const largestSub = Math.max(1, ...topic.subjects.map((s) => s.bills));
+
+const link = (changes: Record<string, string>) => {
+  const next = new URLSearchParams(params);
+  for (const [k, v] of Object.entries(changes)) {
+    if (!v || v === "all") next.delete(k);
+    else next.set(k, v);
+  }
+  if (!("page" in changes)) next.delete("page");
+  const s = next.toString();
+  return `/topics/${topic.slug}${s ? `?${s}` : ""}`;
+};
+---
+
+<Layout title={subject ? `${subject.name} · ${topic.area}` : topic.area} crumbs={["Directories", topic.area]}>
+  <div class="console">
+    <div class="cols cols-side">
+      <div class="stack">
+        <Panel label="Directory" code={topic.slug.slice(0, 10).toUpperCase()}>
+          <div class="panel-body">
+            <p class="label">Policy_area</p>
+            <p class="area">{topic.area}</p>
+            <div class="rows-list">
+              <div><span>Measures</span><span>{topic.bills.toLocaleString("en-US")}</span></div>
+              <div><span>Advanced</span><span>{topic.advanced.toLocaleString("en-US")}</span></div>
+              <div><span>Enacted</span><span class="ok">{topic.laws}</span></div>
+              <div><span>Last activity</span><span>{consoleDate(topic.latest)}</span></div>
+            </div>
+          </div>
+          <div class="panel-body">
+            <p class="label">Subtopics</p>
+            <ul class="subs">
+              <li>
+                <a href={link({ subject: "" })} class={!subject ? "on" : undefined}><span>[ All ]</span><span>{topic.bills}</span></a>
+              </li>
+              {
+                topic.subjects.map((s) => (
+                  <li>
+                    <a href={link({ subject: s.slug })} class={subject?.slug === s.slug ? "on" : undefined}>
+                      <span>{s.name}</span>
+                      <span>{s.bills}</span>
+                    </a>
+                    <SegBar value={s.bills} max={largestSub} cells={20} height={3} tone={subject?.slug === s.slug ? "bright" : "dim"} />
+                  </li>
+                ))
+              }
+            </ul>
+          </div>
+        </Panel>
+        <a class="btn ghost back" href="/topics">‹ All directories</a>
+      </div>
+
+      <Panel class="queue">
+        <div class="panel-body head">
+          <p class="label"><span data-scramble>{topic.area}</span>{subject && <> <span class="faint">//</span> <span data-scramble>{subject.name}</span></>}</p>
+          <h1 class="title cursor"><span data-scramble>{subject?.name ?? topic.area}</span></h1>
+          <p class="label">Displaying {bills.length} of {total.toLocaleString("en-US")} records · sorted by latest action</p>
+        </div>
+        <div class="panel-body frow">
+          <span class="label">Status</span>
+          <div class="toggles">
+            <a class:list={["toggle", status === "all" && "active"]} href={link({ status: "all" })}>All</a>
+            <a class:list={["toggle", status === "advanced" && "active"]} href={link({ status: "advanced" })}>Passed a chamber</a>
+            <a class:list={["toggle", status === "law" && "active"]} href={link({ status: "law" })}>Enacted</a>
+          </div>
+        </div>
+        {
+          bills.length ? (
+            <div class="table-scroll">
+              <table class="rtable">
+                <thead><tr><th>Measure</th><th>Subject</th><th>Sponsor</th><th>Status</th><th>Last action</th></tr></thead>
+                <tbody>
+                  {bills.map((b) => (
+                    <tr data-href={`/bills/${b.id}`}>
+                      <td><a class="tag" href={`/bills/${b.id}`}>{billNumber(b.bill_type, b.number)}</a></td>
+                      <td class="subject">{b.title}</td>
+                      <td class="mono">
+                        {b.sponsor_name?.split(" ").at(-1)} <span class={`party ${partyClass(b.sponsor_party)}`}>{b.sponsor_party}-{b.sponsor_state}</span>
+                      </td>
+                      <td><StatusTag status={b.status} /></td>
+                      <td class="mono">{consoleDate(b.latest_action_date)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p class="empty">No records match</p>
+          )
+        }
+        <p class="pager">
+          <span>Page {page} / {pages}</span>
+          <span class="toggles">
+            {page > 1 && <a class="toggle" href={link({ page: String(page - 1) })}>‹ Prev</a>}
+            {page < pages && <a class="toggle" href={link({ page: String(page + 1) })}>Next ›</a>}
+          </span>
+        </p>
+      </Panel>
+    </div>
+  </div>
+</Layout>
+
+<style>
+  .area {
+    margin: 6px 0 14px;
+    font-size: 1.4rem;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    color: var(--bright);
+  }
+  .subs {
+    list-style: none;
+    margin: 10px 0 0;
+    padding: 0;
+  }
+  .subs li {
+    padding: 6px 0 8px;
+  }
+  .subs a {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 6px;
+    font-size: 0.86rem;
+    color: var(--muted);
+  }
+  .subs a span:last-child {
+    font: 0.7rem var(--mono);
+    color: var(--faint);
+  }
+  .subs a:hover,
+  .subs a.on {
+    color: var(--bright);
+  }
+  .back {
+    justify-content: center;
+  }
+  .title {
+    font-size: clamp(1.8rem, 1.3rem + 1.6vw, 2.8rem);
+    margin: 8px 0 8px;
+  }
+  .frow {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    border-top: 1px solid var(--line);
+  }
+  .queue :global(.table-scroll) {
+    max-height: 70vh;
+  }
+</style>

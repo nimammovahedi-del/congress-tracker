@@ -1,0 +1,11 @@
+---
+import { STATUS } from "../lib/format";
+
+interface Props {
+  status: string;
+}
+const s = STATUS[Astro.props.status] ?? { label: Astro.props.status, tone: "neutral" };
+const tone = s.tone === "good" ? "ok" : s.tone === "bad" ? "alert" : s.tone === "progress" ? "warn" : "neutral";
+---
+
+<span class={`status-tag ${tone}`}>{s.label}</span>

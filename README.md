@@ -2,7 +2,30 @@
 
 A free tracker for the bills, votes, and regulations of the U.S. Congress (working name).
 
-**Status:** Phase 1, the data pipeline, runs locally. There is no website yet (Phase 2).
+**Status:** the data pipeline runs hourly on GitHub Actions and uploads to Cloudflare D1.
+The website (Phase 2, in `web/`) runs locally and isn't deployed yet.
+
+## The website (`web/`)
+
+An Astro 7 site for Cloudflare Workers, styled as a dark monitoring console. Pages:
+home (this week in Congress), `/votes` (roll-call directory) and `/votes/[id]` (seat chart,
+tally analysis, member inspector), `/bills/[id]`, `/members` and `/members/[id]`, `/topics`
+and `/topics/[slug]`, `/search`, `/find` (address → representatives via the Census
+geocoder), `/analytics`, and `/about`.
+
+```bash
+cd web
+npm install
+npm run data   # copy ../data/congress.db into the local stand-in for D1 (stop dev first)
+npm run dev    # http://localhost:4321
+npm run check  # type check
+```
+
+Pages read D1, which bills by rows read, so anything that would scan whole tables (topic
+lists, analytics, member statistics) is precomputed by the pipeline's `stats` step into the
+`site_stats` table. Full-text search uses an FTS5 table defined in `db/site.sql`.
+Motion (decoding text, counters, panels unfolding) lives in `web/src/scripts/fx.ts` and is
+switched off for visitors who prefer reduced motion.
 
 ## What it does
 

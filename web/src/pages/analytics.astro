@@ -1,0 +1,527 @@
+---
+import Bars from "../components/Bars.astro";
+import Panel from "../components/Panel.astro";
+import Layout from "../layouts/Layout.astro";
+import { memberStats, stat } from "../lib/db";
+import { formatNumber, memberTag, partyClass } from "../lib/format";
+
+type Funnel = { grp: string; introduced: number; reported: number; passed_one: number; passed_both: number; law: number };
+type Output = { introduced: { month: string; house_bills: number; senate_bills: number; resolutions: number }[]; laws: { month: string; laws: number }[] };
+type Margin = { month: string; chamber: string; votes: number; party_line: number; close: number };
+type Trends = { areas: string[]; rows: { quarter: string; area: string; bills: number }[] };
+
+const [overview, passRates, output, margins, trends, members] = await Promise.all([
+  stat<{ bills: number; laws: number; votes: number; vote_pass_pct: number }>("overview"),
+  stat<{ all: Funnel[]; by_chamber: Funnel[]; by_party: Funnel[] }>("pass_rates"),
+  stat<Output>("bill_output"),
+  stat<Margin[]>("vote_margins"),
+  stat<Trends>("topic_trends"),
+  memberStats(),
+]);
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const monthLabel = (ym: string) => `${MONTHS[Number(ym.slice(5, 7)) - 1]} ${ym.slice(2, 4)}`;
+const pct = (part: number, whole: number) => (whole ? (100 * part) / whole : 0);
+const fmtPct = (n: number) => (n < 1 && n > 0 ? n.toFixed(2) : n.toFixed(1)) + "%";
+
+// Funnel views
+const STAGES = [
+  { key: "introduced", label: "Introduced" },
+  { key: "reported", label: "Reported by committee" },
+  { key: "passed_one", label: "Passed one chamber" },
+  { key: "passed_both", label: "Passed both chambers" },
+  { key: "law", label: "Became law" },
+] as const;
+const all = passRates?.all[0];
+const lawRate = all ? pct(all.law, all.introduced) : 0;
+const funnelGroups = {
+  all: (passRates?.all ?? []).map((g) => ({ ...g, name: "All bills", cls: "bright" })),
+  chamber: (passRates?.by_chamber ?? []).map((g) => ({ ...g, name: `${g.grp} bills`, cls: "bright" })),
+  party: (passRates?.by_party ?? []).filter((g) => g.grp === "D" || g.grp === "R").map((g) => ({ ...g, name: g.grp === "D" ? "Democratic sponsor" : "Republican sponsor", cls: g.grp === "D" ? "dem" : "rep" })),
+};
+
+// Bill output
+const months = output?.introduced ?? [];
+const series = {
+  all: months.map((m) => ({ label: monthLabel(m.month), value: m.house_bills + m.senate_bills + m.resolutions, tip: `${monthLabel(m.month)}: ${formatNumber(m.house_bills + m.senate_bills + m.resolutions)} measures introduced` })),
+  house: months.map((m) => ({ label: monthLabel(m.month), value: m.house_bills, tip: `${monthLabel(m.month)}: ${formatNumber(m.house_bills)} House bills` })),
+  senate: months.map((m) => ({ label: monthLabel(m.month), value: m.senate_bills, tip: `${monthLabel(m.month)}: ${formatNumber(m.senate_bills)} Senate bills` })),
+  res: months.map((m) => ({ label: monthLabel(m.month), value: m.resolutions, tip: `${monthLabel(m.month)}: ${formatNumber(m.resolutions)} resolutions` })),
+};
+const lawMonths = months.map((m) => m.month);
+const lawsBy = new Map((output?.laws ?? []).map((l) => [l.month, l.laws]));
+const lawSeries = lawMonths.map((m) => ({ label: monthLabel(m), value: lawsBy.get(m) ?? 0, tip: `${monthLabel(m)}: ${lawsBy.get(m) ?? 0} signed into law` }));
+
+// Party-line votes
+const marginSeries = (chamber: string) =>
+  (margins ?? [])
+    .filter((m) => m.chamber === chamber)
+    .map((m) => ({ label: monthLabel(m.month), value: Math.round(pct(m.party_line, m.votes)), tip: `${monthLabel(m.month)}: ${m.party_line} of ${m.votes} votes party-line (${Math.round(pct(m.party_line, m.votes))}%) · ${m.close} close` }));
+const totalVotes = (margins ?? []).reduce((n, m) => n + m.votes, 0);
+const partyLineShare = pct((margins ?? []).reduce((n, m) => n + m.party_line, 0), totalVotes);
+
+// Party unity strip: one dot per serving member.
+const serving = members.filter((m) => m.in_office && m.party_unity_pct !== null && m.unity_votes >= 20);
+const UNITY_MIN = Math.floor(Math.min(80, ...serving.map((m) => m.party_unity_pct!)) / 5) * 5;
+const jitter = (id: string) => {
+  let h = 0;
+  for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return (h % 1000) / 1000;
+};
+const strip = (chamber: string) => {
+  const ms = serving.filter((m) => m.chamber === chamber);
+  const rowsY: Record<string, number> = { D: 0, R: 1, I: 2 };
+  return ms.map((m) => {
+    const p = m.party === "D" || m.party === "R" ? m.party : "I";
+    return {
+      x: ((m.party_unity_pct! - UNITY_MIN) / (100 - UNITY_MIN)) * 100,
+      y: 12 + rowsY[p] * 46 + jitter(m.id) * 30,
+      p,
+      tip: `${m.name} (${memberTag(m)}): ${m.party_unity_pct}% with party`,
+      id: m.id,
+    };
+  });
+};
+const leastAligned = (party: string, chamber: string) =>
+  serving
+    .filter((m) => m.party === party && m.chamber === chamber)
+    .sort((a, b) => a.party_unity_pct! - b.party_unity_pct!)
+    .slice(0, 4);
+
+// Topic trends: small multiples on a shared scale.
+const quarters = [...new Set((trends?.rows ?? []).map((r) => r.quarter))].sort();
+const trendMax = Math.max(1, ...(trends?.rows ?? []).map((r) => r.bills));
+
+// Attendance
+const mostMissed = members.filter((m) => m.in_office && m.votes >= 50).sort((a, b) => (b.missed_pct ?? 0) - (a.missed_pct ?? 0)).slice(0, 10);
+---
+
+<Layout title="Analytics" crumbs={["Intelligence", "Analytics"]}>
+  <div class="console">
+    <Panel>
+      <div class="panel-body head">
+        <p class="label"><span data-scramble>Intelligence // Trend analysis</span></p>
+        <h1 class="cursor"><span data-scramble>Analytics</span></h1>
+        <div class="cols cols-4 tiles">
+          <div class="statbox"><div class="label">Bills that became law</div><div class="value ok" data-count={lawRate.toFixed(2)} data-decimals="2" data-suffix="%">{fmtPct(lawRate)}</div></div>
+          <div class="statbox"><div class="label">Measures introduced</div><div class="value" data-count={overview?.bills ?? 0}>{formatNumber(overview?.bills)}</div></div>
+          <div class="statbox"><div class="label">Roll calls recorded</div><div class="value" data-count={overview?.votes ?? 0}>{formatNumber(overview?.votes)}</div></div>
+          <div class="statbox"><div class="label">Party-line votes</div><div class="value" data-count={partyLineShare.toFixed(1)} data-decimals="1" data-suffix="%">{partyLineShare.toFixed(1)}%</div></div>
+        </div>
+      </div>
+    </Panel>
+
+    <div class="cols cols-2 charts">
+      <Panel label="Legislative funnel // Pass rate" code="0xFNL" class="chart-panel" id="funnel">
+        <div class="panel-body">
+          <div class="toggles" data-switch="funnel">
+            <button class="toggle active" type="button" data-show="all">All</button>
+            <button class="toggle" type="button" data-show="chamber">By chamber</button>
+            <button class="toggle" type="button" data-show="party">By sponsor party</button>
+          </div>
+          {
+            Object.entries(funnelGroups).map(([view, groups]) => (
+              <div class="funnel" data-view={view} hidden={view !== "all"}>
+                {STAGES.map((s) => (
+                  <div class="stage">
+                    <span class="label">{s.label}</span>
+                    {groups.map((g) => {
+                      const v = g[s.key];
+                      const rate = pct(v, g.introduced);
+                      return (
+                        <div class="frow" data-tip={`${g.name}: ${formatNumber(v)} of ${formatNumber(g.introduced)} (${fmtPct(rate)})`} tabindex="0">
+                          <span class={`who party ${g.cls === "dem" ? "dem" : g.cls === "rep" ? "rep" : ""}`}>{groups.length > 1 ? (view === "chamber" ? g.grp[0] : g.grp) : ""}</span>
+                          <span class="track"><span class={`fill ${g.cls}`} style={`width:max(2px, ${rate}%)`} /></span>
+                          <span class="val">{fmtPct(rate)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+                <p class="label faint note">Bills and joint resolutions only · bar = share of all introduced</p>
+              </div>
+            ))
+          }
+        </div>
+      </Panel>
+
+      <Panel label="Bill output // Monthly" code="0xOUT" class="chart-panel">
+        <div class="panel-body">
+          <div class="toggles" data-switch="output">
+            <button class="toggle active" type="button" data-show="all">All measures</button>
+            <button class="toggle" type="button" data-show="house">House bills</button>
+            <button class="toggle" type="button" data-show="senate">Senate bills</button>
+            <button class="toggle" type="button" data-show="res">Resolutions</button>
+          </div>
+          {Object.entries(series).map(([k, data]) => <div data-view={k} hidden={k !== "all"}><Bars data={data} height={190} /></div>)}
+          <p class="label sub">Signed into law · monthly</p>
+          <Bars data={lawSeries} height={90} tone="ok" />
+          <details>
+            <summary>View as table</summary>
+            <table class="rtable small-table">
+              <thead><tr><th>Month</th><th class="num">House bills</th><th class="num">Senate bills</th><th class="num">Resolutions</th><th class="num">Laws</th></tr></thead>
+              <tbody>{months.map((m) => <tr><td class="mono">{monthLabel(m.month)}</td><td class="num">{m.house_bills}</td><td class="num">{m.senate_bills}</td><td class="num">{m.resolutions}</td><td class="num">{lawsBy.get(m.month) ?? 0}</td></tr>)}</tbody>
+            </table>
+          </details>
+        </div>
+      </Panel>
+
+      <Panel label="Party alignment // Distribution" code="0xUNI" class="chart-panel">
+        <div class="panel-body">
+          <div class="toggles" data-switch="unity">
+            <button class="toggle active" type="button" data-show="house">House</button>
+            <button class="toggle" type="button" data-show="senate">Senate</button>
+          </div>
+          {
+            ["house", "senate"].map((chamber) => (
+              <div data-view={chamber} hidden={chamber !== "house"}>
+                <div class="strip-wrap">
+                  <div class="strip-rows label">
+                    <span>DEM</span>
+                    <span>REP</span>
+                    <span>IND</span>
+                  </div>
+                  <svg class="dots" viewBox="0 0 100 150" preserveAspectRatio="none" role="img" aria-label={`Party alignment of ${chamber} members`}>
+                    {[0, 25, 50, 75, 100].map((x) => <line x1={x} x2={x} y1="0" y2="150" class="vgrid" />)}
+                    {strip(chamber).map((d) => (
+                      <g data-tip={d.tip} tabindex="0">
+                        <ellipse cx={d.x.toFixed(2)} cy={d.y.toFixed(1)} rx="0.75" ry="2.4" class={`pd ${partyClass(d.p)}`} />
+                      </g>
+                    ))}
+                  </svg>
+                  <div class="strip-axis label">
+                    {[0, 25, 50, 75, 100].map((x) => <span>{Math.round(UNITY_MIN + ((100 - UNITY_MIN) * x) / 100)}%</span>)}
+                  </div>
+                </div>
+                <div class="least">
+                  {["D", "R"].map((p) => (
+                    <div>
+                      <p class="label">Least aligned · <span class={`party ${partyClass(p)}`}>{p === "D" ? "DEM" : "REP"}</span></p>
+                      {leastAligned(p, chamber).map((m) => (
+                        <a class="lrow" href={`/members/${m.id}`}>
+                          <span>{m.name}</span>
+                          <span class="mono">{m.party_unity_pct}%</span>
+                        </a>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))
+          }
+          <p class="label faint note">Share of party-split votes where a member sided with their party · Independents counted with Democrats</p>
+        </div>
+      </Panel>
+
+      <Panel label="Party-line votes // Monthly share" code="0xPLV" class="chart-panel">
+        <div class="panel-body">
+          <div class="toggles" data-switch="margins">
+            <button class="toggle active" type="button" data-show="house">House</button>
+            <button class="toggle" type="button" data-show="senate">Senate</button>
+          </div>
+          {["house", "senate"].map((c) => <div data-view={c} hidden={c !== "house"}><Bars data={marginSeries(c)} height={200} unit="%" max={100} tone="dim" /></div>)}
+          <p class="label faint note">Votes where most Democrats and most Republicans voted opposite ways, as a share of all roll calls that month</p>
+        </div>
+      </Panel>
+    </div>
+
+    <Panel label="Topic trends // Measures introduced per quarter" code="0xTPC" class="trends-panel">
+      <div class="panel-body multiples">
+        {
+          (trends?.areas ?? []).map((area) => {
+            const byQ = new Map((trends?.rows ?? []).filter((r) => r.area === area).map((r) => [r.quarter, r.bills]));
+            const total = [...byQ.values()].reduce((a, b) => a + b, 0);
+            return (
+              <div class="mult">
+                <div class="mult-head">
+                  <span class="mult-name">{area}</span>
+                  <span class="label">{formatNumber(total)}</span>
+                </div>
+                <div class="mini" style={`--n:${quarters.length}`}>
+                  {quarters.map((q) => (
+                    <span data-tip={`${area} · ${q}: ${byQ.get(q) ?? 0} measures`} tabindex="0">
+                      <i style={`height:${((byQ.get(q) ?? 0) / trendMax) * 100}%`} />
+                    </span>
+                  ))}
+                </div>
+                <div class="mini-axis label"><span>{quarters[0]}</span><span>{quarters.at(-1)}</span></div>
+              </div>
+            );
+          })
+        }
+      </div>
+      <p class="label faint note pad">Ten busiest policy areas · all panels share one scale</p>
+    </Panel>
+
+    <Panel label="Attendance // Most missed votes" code="0xATT">
+      <div class="table-scroll">
+        <table class="rtable">
+          <thead><tr><th>Member</th><th>Seat</th><th class="num">Votes</th><th class="num">Missed</th></tr></thead>
+          <tbody>
+            {
+              mostMissed.map((m) => (
+                <tr data-href={`/members/${m.id}`}>
+                  <td><a href={`/members/${m.id}`}>{m.name}</a></td>
+                  <td class="mono"><span class={`party ${partyClass(m.party)}`}>{memberTag(m)}</span></td>
+                  <td class="num">{formatNumber(m.votes)}</td>
+                  <td class="num">{m.missed_pct}%</td>
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+      </div>
+    </Panel>
+
+    <div class="tooltip label" role="status" hidden></div>
+  </div>
+</Layout>
+
+<script>
+  // View switches above each chart.
+  document.querySelectorAll<HTMLElement>("[data-switch]").forEach((group) => {
+    const panel = group.closest(".panel-body")!;
+    const buttons = group.querySelectorAll<HTMLButtonElement>("[data-show]");
+    buttons.forEach((b) =>
+      b.addEventListener("click", () => {
+        buttons.forEach((x) => x.classList.toggle("active", x === b));
+        panel.querySelectorAll<HTMLElement>(":scope > [data-view]").forEach((v) => (v.hidden = v.dataset.view !== b.dataset.show));
+      }),
+    );
+  });
+
+  // One tooltip for every chart mark.
+  const tip = document.querySelector<HTMLElement>(".tooltip")!;
+  const show = (el: Element, x: number, y: number) => {
+    tip.textContent = el.getAttribute("data-tip");
+    tip.hidden = false;
+    const w = tip.offsetWidth;
+    tip.style.left = `${Math.min(window.innerWidth - w - 12, Math.max(12, x - w / 2))}px`;
+    tip.style.top = `${y - tip.offsetHeight - 14}px`;
+  };
+  document.addEventListener("pointermove", (e) => {
+    const el = (e.target as Element).closest?.("[data-tip]");
+    if (el) show(el, e.clientX, e.clientY);
+    else tip.hidden = true;
+  });
+  document.addEventListener("focusin", (e) => {
+    const el = (e.target as Element).closest?.("[data-tip]");
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    show(el, r.left + r.width / 2, r.top);
+  });
+  document.addEventListener("focusout", () => (tip.hidden = true));
+</script>
+
+<style>
+  .head h1 {
+    margin: 10px 0 22px;
+  }
+  .tiles {
+    gap: 12px;
+  }
+  .charts {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr));
+    margin-top: var(--gap);
+    margin-bottom: var(--gap);
+  }
+  .chart-panel .toggles {
+    margin-bottom: 18px;
+  }
+  .funnel {
+    display: grid;
+    gap: 14px;
+  }
+  .stage {
+    display: grid;
+    gap: 6px;
+  }
+  .frow {
+    display: grid;
+    grid-template-columns: auto 1fr 64px;
+    align-items: center;
+    gap: 10px;
+  }
+  .frow:focus {
+    outline: none;
+  }
+  .frow:hover .track,
+  .frow:focus .track {
+    background: #1c1c1c;
+  }
+  .who {
+    width: 14px;
+  }
+  .track {
+    height: 14px;
+    background: #141414;
+  }
+  .fill {
+    display: block;
+    height: 100%;
+    background: #e5e5e5;
+  }
+  .fill.dem {
+    background: var(--dem);
+  }
+  .fill.rep {
+    background: var(--rep);
+  }
+  :global(.fx) .fill {
+    animation: grow 800ms var(--ease) both 250ms;
+  }
+  .val {
+    font: 0.8rem var(--mono);
+    text-align: right;
+    color: var(--bright);
+  }
+  .note {
+    margin: 16px 0 0;
+  }
+  .sub {
+    margin: 22px 0 8px;
+  }
+  .small-table td,
+  .small-table th {
+    padding: 6px 10px;
+  }
+  .strip-wrap {
+    position: relative;
+    padding-left: 44px;
+  }
+  .strip-rows {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 150px;
+    display: grid;
+    grid-template-rows: repeat(3, 1fr);
+    align-items: center;
+  }
+  .dots {
+    display: block;
+    width: 100%;
+    height: 150px;
+  }
+  .vgrid {
+    stroke: var(--line);
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+  }
+  .pd {
+    opacity: 0.85;
+  }
+  .pd.dem {
+    fill: var(--dem);
+  }
+  .pd.rep {
+    fill: var(--rep);
+  }
+  .pd.ind {
+    fill: var(--ind);
+  }
+  .dots g:hover .pd,
+  .dots g:focus .pd {
+    fill: var(--bright);
+    opacity: 1;
+  }
+  .dots g:focus {
+    outline: none;
+  }
+  .strip-axis {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6px;
+  }
+  .least {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin-top: 18px;
+  }
+  .lrow {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--line);
+    font-size: 0.86rem;
+  }
+  .lrow .mono {
+    font-size: 0.78rem;
+    color: var(--bright);
+  }
+  .trends-panel {
+    margin-bottom: var(--gap);
+  }
+  .multiples {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr));
+    gap: 18px 22px;
+  }
+  .mult-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .mult-name {
+    font-size: 0.88rem;
+    color: var(--bright);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mini {
+    display: grid;
+    grid-template-columns: repeat(var(--n), 1fr);
+    align-items: end;
+    gap: 3px;
+    height: 70px;
+    border-bottom: 1px solid var(--line-2);
+  }
+  .mini span {
+    display: flex;
+    align-items: flex-end;
+    height: 100%;
+  }
+  .mini i {
+    display: block;
+    width: 100%;
+    background: #8a8a8a;
+  }
+  .mini span:hover i,
+  .mini span:focus i {
+    background: var(--bright);
+  }
+  .mini span:focus {
+    outline: none;
+  }
+  :global(.fx) .mini i {
+    animation: grow-v 600ms var(--ease) both 300ms;
+    transform-origin: bottom;
+  }
+  @keyframes grow-v {
+    from {
+      transform: scaleY(0);
+    }
+  }
+  .mini-axis {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 4px;
+  }
+  .pad {
+    padding: 0 var(--pad) var(--pad);
+  }
+  .tooltip {
+    position: fixed;
+    z-index: 80;
+    max-width: 320px;
+    padding: 7px 10px;
+    background: var(--bright);
+    color: #050505;
+    pointer-events: none;
+    letter-spacing: 0.06em;
+  }
+</style>

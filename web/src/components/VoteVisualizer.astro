@@ -1,0 +1,683 @@
+---
+// The vote visualizer: a seat chart (each dot a member: party color, filled = Yea,
+// outline = Nay, faint = didn't vote) with a member inspector, and a Registry view with the
+// tally analysis and a searchable member list. Used on vote pages and bill pages.
+import type { MemberVote, RollCall } from "../lib/db";
+import { billNumberFromId, consoleDate, memberTag, partyClass, POSITION_LABELS } from "../lib/format";
+import { hemicycle } from "../lib/hemicycle";
+import { threshold, type SeatInfo } from "../lib/votes";
+
+interface Props {
+  rollCall: RollCall;
+  votes: MemberVote[];
+  seats: Record<string, SeatInfo>;
+  billTitle?: string | null;
+}
+const { rollCall: r, votes, seats: seatData, billTitle } = Astro.props;
+
+const PARTY_ORDER = ["D", "I", "R"];
+const POSITION_ORDER = ["yea", "nay", "present", "not_voting", "other"];
+const partyOf = (v: MemberVote) => (v.party === "D" || v.party === "R" ? v.party : "I");
+const rank = (v: MemberVote) => {
+  const pos = POSITION_ORDER.indexOf(v.position);
+  return partyOf(v) === "R" ? -pos : pos; // members who broke ranks sit near the middle
+};
+const seated = [...votes].sort(
+  (a, b) => PARTY_ORDER.indexOf(partyOf(a)) - PARTY_ORDER.indexOf(partyOf(b)) || rank(a) - rank(b) || (a.last_name ?? "").localeCompare(b.last_name ?? ""),
+);
+const { seats, dot } = hemicycle(seated.length);
+const cls = (v: MemberVote) => `seat ${partyClass(partyOf(v))} ${v.position === "yea" ? "y" : v.position === "nay" ? "n" : "nv"}`;
+
+const parties = PARTY_ORDER.map((p) => {
+  const m = votes.filter((v) => partyOf(v) === p);
+  return { p, total: m.length, yea: m.filter((v) => v.position === "yea").length, nay: m.filter((v) => v.position === "nay").length };
+}).filter((x) => x.total > 0);
+
+const t = threshold(r);
+const voting = r.yea + r.nay;
+const registry = [...votes].sort((a, b) => (a.last_name ?? "").localeCompare(b.last_name ?? ""));
+const heading = r.bill_id ? billNumberFromId(r.bill_id) : r.subject_ref?.startsWith("PN") ? `Nomination ${r.subject_ref.slice(2)}` : `Roll ${r.roll_number}`;
+const PARTY_NAMES: Record<string, string> = { D: "Democrat", R: "Republican", I: "Independent" };
+---
+
+<div class="viz" data-viz data-chamber={r.chamber}>
+  <header class="viz-head">
+    <span class="label">Visualizer_mode</span>
+    <div class="toggles" role="tablist">
+      <button class="toggle active" type="button" role="tab" aria-selected="true" data-tab="hemicycle">Hemicycle</button>
+      <button class="toggle" type="button" role="tab" aria-selected="false" data-tab="registry">Registry</button>
+    </div>
+  </header>
+
+  <!-- Hemicycle -->
+  <div class="tab" data-pane="hemicycle">
+    <div class="hemi-layout">
+      <div class="hemi-main">
+        <p class="label entry"><span class="sq-mini"></span> {r.bill_id ? "Resolution entry" : "Roll call entry"} <span class="faint">|</span> {consoleDate(r.vote_date)}</p>
+        <h2 class="measure cursor"><span data-scramble>{heading}</span></h2>
+        {billTitle && <p class="bill-title">{billTitle}</p>}
+        <p class="label question">Vote [{r.question ?? "Recorded vote"}]</p>
+
+        <svg class="hemi" viewBox="-106 -106 212 114" role="img" aria-label={`Seat chart: ${r.yea} yea, ${r.nay} nay`}>
+          <path d="M -104 4 A 104 104 0 0 1 104 4" class="arc" />
+          {
+            seated.map((v, i) => (
+              <a href={`/members/${v.bioguide_id}`} data-id={v.bioguide_id} aria-label={`${v.full_name}: ${POSITION_LABELS[v.position] ?? v.position}`}>
+                <circle cx={seats[i].x.toFixed(2)} cy={seats[i].y.toFixed(2)} r={dot.toFixed(2)} class={cls(v)} style={`--s:${i}`} />
+              </a>
+            ))
+          }
+          <rect x="-9" y="-3" width="18" height="3" class="dais" />
+        </svg>
+
+        <div class="legend label">
+          <span>Legend</span>
+          {
+            ["D", "R", "I"].map((p) => (
+              <span class="lg">
+                <b class={`party ${partyClass(p)}`}>{p === "D" ? "DEM" : p === "R" ? "REP" : "IND"}</b>
+                <i class={`k ${partyClass(p)} y`} /> Y <i class={`k ${partyClass(p)} n`} /> N <i class={`k ${partyClass(p)} nv`} /> NV
+              </span>
+            ))
+          }
+        </div>
+      </div>
+
+      <aside class="inspector" aria-live="polite">
+        <p class="label insp-head">Node_inspector <span class="faint">+</span></p>
+        <div class="viewfinder">
+          <img alt="" hidden data-i="photo" />
+          <span class="cross" aria-hidden="true"></span>
+          <span class="label nosignal" data-i="signal">No signal</span>
+        </div>
+        <p class="insp-name" data-i="name">Awaiting target…</p>
+        <div class="kv">
+          <div><span class="label">District</span><div class="v" data-i="district">--</div></div>
+          <div><span class="label">Party</span><div class="v" data-i="party">--</div></div>
+        </div>
+        <div class="insp-vote">
+          <span class="label">Vote cast</span>
+          <div><span class="status-tag neutral" data-i="vote">--</span></div>
+        </div>
+        <div class="rows-list">
+          <div><span>Party alignment</span><span data-i="unity">--</span></div>
+          <div><span>Sponsored</span><span data-i="sponsored">-- bills</span></div>
+          <div><span>Tenure</span><span data-i="tenure">--</span></div>
+        </div>
+        <p class="label faint tip">Hover a seat · click to open the member</p>
+      </aside>
+    </div>
+  </div>
+
+  <!-- Registry -->
+  <div class="tab" data-pane="registry" hidden>
+    <div class="reg-top">
+      <p class="label reg-title">{heading} <span class="faint">//</span> {billTitle ?? r.question}</p>
+      <p class="label center">[ Roll_call_analysis // Final_tally ]</p>
+      <div class="tally">
+        <div><span class="label">Yea</span><span class="tnum" data-count={r.yea}>{r.yea}</span></div>
+        <span class="margin label">Margin {r.yea - r.nay >= 0 ? "+" : ""}{r.yea - r.nay}</span>
+        <div><span class="label">Nay</span><span class="tnum dimnum" data-count={r.nay}>{r.nay}</span></div>
+      </div>
+      <div class="meter" style={`--yea:${voting ? (100 * r.yea) / voting : 0}%;--thr:${voting ? Math.min(100, (100 * t.needed) / voting) : 50}%`}>
+        <span class="fill"></span><span class="thr"></span>
+      </div>
+      <div class="meter-scale label"><span>0</span><span>{t.needed} threshold ({t.label})</span><span>{voting}</span></div>
+
+      <div class="parties">
+        {
+          parties.map((p) => (
+            <div class={`pbox ${partyClass(p.p)}`}>
+              <div class="pbox-head label">
+                <span class={`party ${partyClass(p.p)}`}>{PARTY_NAMES[p.p]}</span>
+                <span>{p.total} votes</span>
+              </div>
+              <div class="pbar"><span style={`width:${p.total ? (100 * p.yea) / p.total : 0}%`} /></div>
+              <div class="pbox-foot label">
+                <span>Yea: <b>{p.yea}</b></span>
+                <span>Nay: <b>{p.nay}</b></span>
+              </div>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+
+    <div class="reg-tools">
+      <span class="label">Member_registry: {votes.length} records</span>
+      <div class="toggles" data-filter-group>
+        <button class="toggle active" type="button" data-show="all">All</button>
+        <button class="toggle" type="button" data-show="yea">Yea</button>
+        <button class="toggle" type="button" data-show="nay">Nay</button>
+        <button class="toggle" type="button" data-show="absent">NV</button>
+      </div>
+      <input type="search" placeholder="Search by name, state…" data-search aria-label="Search members" />
+    </div>
+    <div class="table-scroll">
+      <table class="rtable registry">
+        <thead><tr><th>Representative</th><th>Party</th><th>State</th><th>District</th><th class="num">Vote_status</th></tr></thead>
+        <tbody>
+          {
+            registry.map((v) => (
+              <tr
+                data-href={`/members/${v.bioguide_id}`}
+                data-id={v.bioguide_id}
+                data-pos={v.position === "yea" ? "yea" : v.position === "nay" ? "nay" : "absent"}
+                data-q={`${v.full_name} ${v.state} ${memberTag({ ...v, chamber: r.chamber })}`.toLowerCase()}
+              >
+                <td>{v.full_name}</td>
+                <td class="mono"><span class={`party ${partyClass(partyOf(v))}`}>{PARTY_NAMES[partyOf(v)]}</span></td>
+                <td class="mono">{v.state}</td>
+                <td class="mono">{r.chamber === "house" ? (v.district === 0 ? "AL" : (v.district ?? "--")) : "--"}</td>
+                <td class="num">
+                  <span class={`status-tag ${v.position === "yea" ? "ok" : v.position === "nay" ? "alert" : "neutral"}`}>
+                    {v.position === "other" ? v.detail : POSITION_LABELS[v.position]}
+                  </span>
+                </td>
+              </tr>
+            ))
+          }
+        </tbody>
+      </table>
+    </div>
+    <p class="pager"><span data-range>Records</span><span><button class="toggle" type="button" data-prev>‹ Prev</button> <span data-page></span> <button class="toggle" type="button" data-next>Next ›</button></span></p>
+  </div>
+
+  <script type="application/json" data-seats set:html={JSON.stringify(seatData)} />
+</div>
+
+<script>
+  import { countUp, scramble } from "../scripts/fx";
+
+  type Seat = { n: string; p: string; s: string; d: number | null; v: string; x: string | null; ph: string | null; u: number | null; sp: number | null; t: number | null; si: string | null };
+  const PARTY: Record<string, string> = { D: "DEM", R: "REP", I: "IND" };
+  const VOTE: Record<string, string> = { yea: "YEA", nay: "NAY", present: "PRESENT", not_voting: "NOT VOTING" };
+
+  for (const viz of document.querySelectorAll<HTMLElement>("[data-viz]")) {
+    const seats = JSON.parse(viz.querySelector("script[data-seats]")?.textContent ?? "{}") as Record<string, Seat>;
+    const chamber = viz.dataset.chamber;
+
+    // Seats appear one after another, left to right.
+    viz.querySelectorAll<SVGCircleElement>("circle.seat").forEach((c) => c.classList.add("seat-in"));
+
+    // Tabs
+    const tabs = viz.querySelectorAll<HTMLButtonElement>("[data-tab]");
+    tabs.forEach((tab) =>
+      tab.addEventListener("click", () => {
+        tabs.forEach((t) => {
+          t.classList.toggle("active", t === tab);
+          t.setAttribute("aria-selected", String(t === tab));
+        });
+        viz.querySelectorAll<HTMLElement>("[data-pane]").forEach((p) => (p.hidden = p.dataset.pane !== tab.dataset.tab));
+        if (tab.dataset.tab === "registry") viz.querySelectorAll<HTMLElement>("[data-pane=registry] [data-count]").forEach((el) => countUp(el, 700));
+      }),
+    );
+
+    // Inspector: show a member when their seat is hovered or focused.
+    const field = (name: string) => viz.querySelector<HTMLElement>(`[data-i="${name}"]`);
+    const photo = field("photo") as HTMLImageElement | null;
+    let current = "";
+    const show = (id: string) => {
+      const m = seats[id];
+      if (!m || id === current) return;
+      current = id;
+      const district = chamber === "house" ? `${m.s}-${m.d === 0 ? "AL" : (m.d ?? "?")}` : m.s;
+      scramble(field("name")!, m.n.toUpperCase(), 380);
+      scramble(field("district")!, district, 300);
+      scramble(field("party")!, PARTY[m.p] ?? m.p, 300);
+      const vote = field("vote")!;
+      vote.textContent = m.v === "other" ? (m.x ?? "OTHER").toUpperCase() : (VOTE[m.v] ?? m.v.toUpperCase());
+      vote.className = `status-tag ${m.v === "yea" ? "ok" : m.v === "nay" ? "alert" : "neutral"}`;
+      scramble(field("unity")!, m.u === null ? "--" : `${m.u}% WITH PARTY`, 320);
+      scramble(field("sponsored")!, m.sp === null ? "--" : `${m.sp} BILLS`, 320);
+      scramble(field("tenure")!, m.t ? `${m.t} TERM${m.t === 1 ? "" : "S"} · SINCE ${m.si ?? "----"}` : "--", 320);
+      field("signal")!.hidden = Boolean(m.ph);
+      if (photo) {
+        if (m.ph) {
+          photo.src = m.ph;
+          photo.hidden = false;
+          photo.classList.remove("flash");
+          void photo.offsetWidth;
+          photo.classList.add("flash");
+        } else photo.hidden = true;
+      }
+    };
+    viz.querySelectorAll<SVGAElement>("svg.hemi a").forEach((a) => {
+      a.addEventListener("mouseenter", () => show(a.dataset.id!));
+      a.addEventListener("focus", () => show(a.dataset.id!));
+    });
+
+    // Registry: filter, search, and pages of 15.
+    const rows = [...viz.querySelectorAll<HTMLTableRowElement>("table.registry tbody tr")];
+    const search = viz.querySelector<HTMLInputElement>("[data-search]");
+    const filterButtons = viz.querySelectorAll<HTMLButtonElement>("[data-filter-group] [data-show]");
+    let filter = "all";
+    let page = 0;
+    const PAGE = 15;
+    const render = () => {
+      const q = (search?.value ?? "").trim().toLowerCase();
+      const matching = rows.filter((r) => (filter === "all" || r.dataset.pos === filter) && (!q || r.dataset.q!.includes(q)));
+      const pages = Math.max(1, Math.ceil(matching.length / PAGE));
+      page = Math.min(page, pages - 1);
+      rows.forEach((r) => (r.hidden = true));
+      matching.slice(page * PAGE, page * PAGE + PAGE).forEach((r) => (r.hidden = false));
+      viz.querySelector("[data-range]")!.textContent = matching.length
+        ? `Records ${page * PAGE + 1}–${Math.min(matching.length, page * PAGE + PAGE)} of ${matching.length}`
+        : "No records";
+      viz.querySelector("[data-page]")!.textContent = `Page ${page + 1} / ${pages}`;
+    };
+    search?.addEventListener("input", () => {
+      page = 0;
+      render();
+    });
+    filterButtons.forEach((b) =>
+      b.addEventListener("click", () => {
+        filter = b.dataset.show!;
+        page = 0;
+        filterButtons.forEach((x) => x.classList.toggle("active", x === b));
+        render();
+      }),
+    );
+    viz.querySelector("[data-prev]")?.addEventListener("click", () => {
+      page = Math.max(0, page - 1);
+      render();
+    });
+    viz.querySelector("[data-next]")?.addEventListener("click", () => {
+      page += 1;
+      render();
+    });
+    render();
+  }
+</script>
+
+<style>
+  .viz {
+    position: relative;
+  }
+  .viz-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px var(--pad);
+    border-bottom: 1px solid var(--line);
+  }
+  .viz-head .label::before {
+    content: "";
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-right: 10px;
+    vertical-align: 1px;
+    background: var(--muted);
+  }
+  .hemi-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 250px;
+    gap: var(--pad);
+    padding: var(--pad);
+  }
+  .entry {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 6px 0 12px;
+  }
+  .sq-mini {
+    width: 7px;
+    height: 7px;
+    background: var(--faint);
+  }
+  .measure {
+    font-size: clamp(2.4rem, 1.6rem + 3vw, 4.4rem);
+    font-weight: 600;
+    letter-spacing: -0.04em;
+    margin: 0 0 10px;
+  }
+  .bill-title {
+    font-size: 1.12rem;
+    color: #c9c9c9;
+    max-width: 60ch;
+    margin-bottom: 8px;
+  }
+  .question {
+    margin-bottom: 4px;
+  }
+  .hemi {
+    display: block;
+    width: 100%;
+    max-width: 640px;
+    margin: 4px auto 0;
+    overflow: visible;
+  }
+  .arc {
+    fill: none;
+    stroke: var(--line-2);
+    stroke-width: 0.4;
+  }
+  .dais {
+    fill: #444;
+  }
+  .seat {
+    stroke-width: 0.9;
+    transition:
+      r 120ms ease,
+      opacity 160ms ease;
+  }
+  .seat.dem {
+    --c: var(--dem);
+  }
+  .seat.rep {
+    --c: var(--rep);
+  }
+  .seat.ind {
+    --c: var(--ind);
+  }
+  .seat.y {
+    fill: var(--c);
+    stroke: var(--c);
+  }
+  .seat.n {
+    fill: var(--bg);
+    stroke: var(--c);
+  }
+  .seat.nv {
+    fill: var(--c);
+    stroke: none;
+    opacity: 0.25;
+  }
+  .hemi a:hover .seat,
+  .hemi a:focus .seat {
+    stroke: var(--bright);
+    stroke-width: 2;
+  }
+  .hemi a:focus {
+    outline: none;
+  }
+  :global(.fx) .seat.seat-in {
+    animation: seat-on 220ms ease both;
+    animation-delay: calc(200ms + var(--s) * 2.2ms);
+  }
+  @keyframes seat-on {
+    from {
+      opacity: 0;
+      transform: scale(0.2);
+    }
+  }
+  .seat {
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 22px;
+    align-items: center;
+    margin-top: 14px;
+    padding: 10px 14px;
+    border: 1px solid var(--line);
+  }
+  .lg {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .lg b {
+    margin-right: 4px;
+  }
+  .k {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    border: 1px solid;
+  }
+  .k.dem {
+    --c: var(--dem);
+  }
+  .k.rep {
+    --c: var(--rep);
+  }
+  .k.ind {
+    --c: var(--ind);
+  }
+  .k.y {
+    background: var(--c);
+    border-color: var(--c);
+  }
+  .k.n {
+    border-color: var(--c);
+  }
+  .k.nv {
+    background: var(--c);
+    border-color: transparent;
+    opacity: 0.3;
+  }
+
+  /* Inspector */
+  .inspector {
+    border: 1px solid var(--line);
+    padding: 12px;
+    align-self: start;
+  }
+  .insp-head {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .viewfinder {
+    position: relative;
+    aspect-ratio: 450 / 550;
+    border: 1px solid var(--line-2);
+    background:
+      linear-gradient(var(--line), var(--line)) 50% 0 / 1px 100% no-repeat,
+      linear-gradient(var(--line), var(--line)) 0 50% / 100% 1px no-repeat,
+      #070707;
+    overflow: hidden;
+  }
+  .viewfinder img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    filter: grayscale(1) contrast(1.08);
+  }
+  :global(.fx) .viewfinder img.flash {
+    animation: acquire 360ms ease-out;
+  }
+  @keyframes acquire {
+    0% {
+      opacity: 0;
+      filter: grayscale(1) contrast(2) brightness(1.6);
+      clip-path: inset(0 0 100% 0);
+    }
+    100% {
+      opacity: 1;
+      clip-path: inset(0);
+    }
+  }
+  .cross {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 26px;
+    height: 26px;
+    margin: -13px 0 0 -13px;
+    border: 1px solid var(--faint);
+    border-radius: 50%;
+    pointer-events: none;
+  }
+  .nosignal {
+    position: absolute;
+    left: 8px;
+    bottom: 6px;
+  }
+  .insp-name {
+    margin: 12px 0 10px;
+    font: 500 1.05rem/1.15 var(--font);
+    color: var(--bright);
+    min-height: 2.3em;
+  }
+  .insp-vote {
+    margin: 12px 0;
+  }
+  .insp-vote div {
+    margin-top: 6px;
+  }
+  .tip {
+    margin: 10px 0 0;
+  }
+
+  /* Registry */
+  .reg-top {
+    padding: var(--pad);
+    border-bottom: 1px solid var(--line);
+  }
+  .reg-title {
+    margin-bottom: 18px;
+  }
+  .center {
+    text-align: center;
+  }
+  .tally {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: clamp(20px, 6vw, 80px);
+    margin: 10px 0 16px;
+  }
+  .tally > div {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  .tnum {
+    font: 300 clamp(3rem, 2rem + 3vw, 4.8rem)/1 var(--font);
+    letter-spacing: -0.04em;
+    color: var(--bright);
+    font-variant-numeric: tabular-nums;
+  }
+  .tnum.dimnum {
+    color: #8a8a8a;
+  }
+  .margin {
+    border: 1px solid var(--line-2);
+    padding: 8px 12px;
+    color: var(--bright);
+  }
+  .meter {
+    position: relative;
+    height: 22px;
+    border: 1px solid var(--line-2);
+    background: repeating-linear-gradient(90deg, #1b1b1b 0 2px, transparent 2px 6px);
+  }
+  .fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: var(--yea);
+    background: repeating-linear-gradient(90deg, #e9e9e9 0 2px, transparent 2px 6px);
+  }
+  :global(.fx) .fill {
+    animation: grow 900ms var(--ease) both 200ms;
+  }
+  @keyframes grow {
+    from {
+      width: 0;
+    }
+  }
+  .thr {
+    position: absolute;
+    top: -4px;
+    bottom: -4px;
+    left: var(--thr);
+    width: 2px;
+    background: var(--alert);
+  }
+  .meter-scale {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6px;
+  }
+  .parties {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-top: 18px;
+  }
+  .pbox {
+    border: 1px solid var(--line-2);
+    padding: 10px 12px;
+  }
+  .pbox.dem {
+    --c: var(--dem);
+    border-color: rgb(74 108 255 / 45%);
+    background: rgb(74 108 255 / 6%);
+  }
+  .pbox.rep {
+    --c: var(--rep);
+    border-color: rgb(255 69 69 / 45%);
+    background: rgb(255 69 69 / 6%);
+  }
+  .pbox.ind {
+    --c: var(--ind);
+    border-color: rgb(148 104 250 / 45%);
+    background: rgb(148 104 250 / 6%);
+  }
+  .pbox-head,
+  .pbox-foot {
+    display: flex;
+    justify-content: space-between;
+  }
+  .pbox-foot b {
+    font-weight: 400;
+    color: var(--c);
+  }
+  .pbar {
+    height: 3px;
+    margin: 10px 0;
+    background: #222;
+  }
+  .pbar span {
+    display: block;
+    height: 100%;
+    background: var(--c);
+  }
+  .reg-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    padding: 12px var(--pad);
+    border-bottom: 1px solid var(--line);
+  }
+  .reg-tools .label {
+    flex: 1 1 200px;
+  }
+  .reg-tools input {
+    flex: 0 1 260px;
+    padding: 8px 11px;
+  }
+  .registry tbody tr[hidden] {
+    display: none;
+  }
+
+  @media (max-width: 1240px) {
+    .hemi-layout {
+      grid-template-columns: 1fr;
+    }
+    .inspector {
+      display: grid;
+      grid-template-columns: 120px 1fr;
+      gap: 0 14px;
+    }
+    .insp-head,
+    .tip {
+      grid-column: 1 / -1;
+    }
+    .viewfinder {
+      grid-row: span 4;
+    }
+  }
+</style>

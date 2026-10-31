@@ -74,8 +74,11 @@ CREATE TABLE IF NOT EXISTS bills (
 );
 CREATE INDEX IF NOT EXISTS bills_sponsor ON bills (sponsor_id);
 CREATE INDEX IF NOT EXISTS bills_latest_action ON bills (latest_action_date);
-CREATE INDEX IF NOT EXISTS bills_policy_area ON bills (policy_area);
-CREATE INDEX IF NOT EXISTS bills_status ON bills (status);
+CREATE INDEX IF NOT EXISTS bills_introduced ON bills (introduced_date);
+DROP INDEX IF EXISTS bills_policy_area;
+CREATE INDEX IF NOT EXISTS bills_policy_area_recent ON bills (policy_area, latest_action_date);
+DROP INDEX IF EXISTS bills_status;
+CREATE INDEX IF NOT EXISTS bills_status_date ON bills (status, status_date);
 
 CREATE TABLE IF NOT EXISTS bill_actions (
   bill_id     TEXT NOT NULL,
@@ -212,6 +215,14 @@ CREATE TABLE IF NOT EXISTS fr_documents (
 );
 CREATE INDEX IF NOT EXISTS fr_documents_date ON fr_documents (publication_date);
 CREATE INDEX IF NOT EXISTS fr_documents_type ON fr_documents (doc_type, publication_date);
+
+-- Figures the website shows that would be too costly to compute per page view:
+-- topic lists, analytics, member statistics. One JSON document per key; see src/sources/stats.ts.
+CREATE TABLE IF NOT EXISTS site_stats (
+  key        TEXT PRIMARY KEY,
+  json       TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 
 -- What has been copied to the hosted database (Cloudflare D1), one row per unit:
 -- a bill with its actions, cosponsors, and so on; a roll call with its member votes;

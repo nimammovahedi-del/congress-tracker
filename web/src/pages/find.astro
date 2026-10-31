@@ -1,0 +1,268 @@
+---
+// Find your representatives from an address (via the U.S. Census Bureau's geocoder) or a
+// state. The address is posted, not put in the URL, and never stored or logged.
+import Panel from "../components/Panel.astro";
+import Terminal, { type Line } from "../components/Terminal.astro";
+import Layout from "../layouts/Layout.astro";
+import { memberStats, rows } from "../lib/db";
+import { CONGRESS, partyClass, PARTY, STATES } from "../lib/format";
+
+// The Census vintage whose congressional districts match the Congress being tracked.
+const VINTAGES: Record<number, string> = { 119: "ACS2025_Current", 120: "Current_Current" };
+
+interface Rep {
+  bioguide_id: string;
+  full_name: string;
+  party: string | null;
+  state: string | null;
+  district: number | null;
+  chamber: string | null;
+  phone: string | null;
+  website: string | null;
+  contact_form: string | null;
+  photo_url: string | null;
+}
+
+let state = (Astro.url.searchParams.get("state") ?? "").toUpperCase();
+let district: number | null = null;
+let matched: string | null = null;
+let error: string | null = null;
+const lines: Line[] = [];
+
+if (Astro.request.method === "POST") {
+  const address = String((await Astro.request.formData()).get("address") ?? "").trim().slice(0, 200);
+  if (address) {
+    lines.push({ text: "Geocoding address via U.S. Census Bureau…" });
+    try {
+      const url = new URL("https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress");
+      url.search = new URLSearchParams({ address, benchmark: "Public_AR_Current", vintage: VINTAGES[CONGRESS] ?? "Current_Current", format: "json" }).toString();
+      const res = await fetch(url, { signal: AbortSignal.timeout(12_000) });
+      const data = (await res.json()) as { result?: { addressMatches?: { matchedAddress: string; geographies: Record<string, Record<string, string>[]> }[] } };
+      const hit = data.result?.addressMatches?.[0];
+      if (!hit) {
+        error = "No match for that address. Check the street and city, or pick your state below.";
+        lines.push({ text: "NO_MATCH", tone: "alert" });
+      } else {
+        matched = hit.matchedAddress;
+        const geo = hit.geographies;
+        state = geo["States"]?.[0]?.STUSAB ?? "";
+        const cdKey = Object.keys(geo).find((k) => /Congressional Districts/.test(k));
+        const base = cdKey ? geo[cdKey]?.[0]?.BASENAME : undefined;
+        district = base === undefined ? null : /^\d+$/.test(base) ? Number(base) : 0; // non-numeric = at-large
+        lines.push({ text: `Match: ${matched}`, tone: "bright" });
+        lines.push({ text: `District resolved: ${state}-${district === 0 ? "AL" : (district ?? "?")}`, tone: "bright" });
+      }
+    } catch {
+      error = "The Census Bureau's address lookup didn't respond. Try again, or pick your state below.";
+      lines.push({ text: "GEOCODER_TIMEOUT", tone: "alert" });
+    }
+  }
+}
+
+const validState = state in STATES ? state : "";
+const reps = validState
+  ? await rows<Rep>(
+      `SELECT bioguide_id, full_name, party, state, district, chamber, phone, website, contact_form, photo_url
+         FROM members WHERE in_office = 1 AND state = ? ORDER BY chamber DESC, district`,
+      validState,
+    )
+  : [];
+const senators = reps.filter((r) => r.chamber === "senate");
+const house = district === null ? reps.filter((r) => r.chamber === "house") : reps.filter((r) => r.chamber === "house" && r.district === district);
+const stats = reps.length ? new Map((await memberStats()).map((s) => [s.id, s])) : new Map();
+if (reps.length) lines.push({ text: `${senators.length + house.length} nodes located`, tone: "ok" });
+const seatLabel = (r: Rep) => (r.chamber === "senate" ? "Senator" : `Representative · ${r.state}-${r.district === 0 ? "AL" : r.district}`);
+---
+
+<Layout title="Find my representatives" crumbs={["Locate", validState ? (STATES[validState] ?? validState) : "Address"]}>
+  <div class="console">
+    <div class="cols cols-main-side">
+      <Panel invert>
+        <form class="panel-body cmd" method="post" action="/find">
+          <label class="label" for="addr">Command input // Locate representatives</label>
+          <div class="cmd-line">
+            <span>&gt; locate</span>
+            <input id="addr" name="address" type="text" placeholder="street address, city, state" autocomplete="street-address" required />
+            <button class="go" type="submit">Enter</button>
+          </div>
+          <p class="hint">Your address goes only to the U.S. Census Bureau's geocoder to find your district. It isn't stored.</p>
+        </form>
+      </Panel>
+      <Panel label="Or select a state">
+        <form class="panel-body state-form" action="/find">
+          <select name="state" aria-label="State" onchange="this.form.submit()">
+            <option value="">Choose a state…</option>
+            {Object.entries(STATES).map(([code, name]) => <option value={code} selected={code === validState}>{name}</option>)}
+          </select>
+          <noscript><button class="btn ghost" type="submit">Show</button></noscript>
+        </form>
+      </Panel>
+    </div>
+
+    {error && <p class="error label">{error}</p>}
+
+    {
+      (lines.length > 0 || reps.length > 0) && (
+        <div class="cols cols-side results">
+          <Panel label="Locator_log" code="0xGEO">
+            <Terminal lines={lines.length ? lines : [{ text: `State selected: ${STATES[validState]}`, tone: "bright" }, { text: `${reps.length} nodes located`, tone: "ok" }]} delay={200} />
+          </Panel>
+          <div class="nodes">
+            {[...senators, ...house].map((r) => {
+              const s = stats.get(r.bioguide_id);
+              const p = r.party === "D" || r.party === "R" ? r.party : "I";
+              return (
+                <Panel label={seatLabel(r)} code={r.bioguide_id}>
+                  <a class="panel-body node" href={`/members/${r.bioguide_id}`}>
+                    <span class="vf">{r.photo_url && <img src={r.photo_url} alt="" loading="lazy" />}<span class="cross" /></span>
+                    <span class="info">
+                      <span class="nname">{r.full_name}</span>
+                      <span class={`party ${partyClass(p)}`}>{PARTY[p]?.name ?? p}</span>
+                      <span class="rows-list">
+                        <span><span>Party alignment</span><span>{s?.party_unity_pct ?? "--"}%</span></span>
+                        <span><span>Missed votes</span><span>{s?.missed_pct ?? "--"}%</span></span>
+                        <span><span>Sponsored</span><span>{s?.sponsored ?? 0}</span></span>
+                      </span>
+                    </span>
+                  </a>
+                  <div class="panel-body contact">
+                    {r.phone && <a class="btn ghost" href={`tel:${r.phone}`}>Call {r.phone}</a>}
+                    {r.contact_form && <a class="btn ghost" href={r.contact_form} target="_blank" rel="noopener">Write ↗</a>}
+                    <a class="btn" href={`/members/${r.bioguide_id}`}>Voting record ›</a>
+                  </div>
+                </Panel>
+              );
+            })}
+          </div>
+        </div>
+      )
+    }
+  </div>
+</Layout>
+
+<style>
+  .cmd {
+    padding: clamp(20px, 3vw, 32px);
+  }
+  .cmd-line {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-top: 16px;
+    font: 500 clamp(1rem, 0.9rem + 0.8vw, 1.5rem) var(--mono);
+    border-bottom: 1px solid #c4c4c4;
+  }
+  .cmd-line > span {
+    white-space: nowrap;
+  }
+  .cmd-line input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    padding: 12px 0;
+    background: transparent;
+    color: #050505;
+    font: inherit;
+  }
+  .cmd-line input:focus-visible {
+    outline: none;
+  }
+  .go {
+    border: 1px solid #050505;
+    background: #050505;
+    color: #ececec;
+    font: 500 0.66rem var(--mono);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    padding: 9px 14px;
+    cursor: pointer;
+  }
+  .hint {
+    margin: 14px 0 0;
+    font: 0.72rem var(--mono);
+    color: #555;
+  }
+  .state-form {
+    display: flex;
+    gap: 8px;
+  }
+  .error {
+    margin: var(--gap) 0 0;
+    color: var(--alert);
+  }
+  .results {
+    margin-top: var(--gap);
+  }
+  .nodes {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr));
+    gap: var(--gap);
+  }
+  .node {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    gap: 16px;
+  }
+  .vf {
+    position: relative;
+    aspect-ratio: 450 / 550;
+    border: 1px solid var(--line-2);
+    background: #070707;
+    overflow: hidden;
+  }
+  .vf img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    filter: grayscale(1) contrast(1.06);
+    transition: filter 200ms ease;
+  }
+  .node:hover .vf img {
+    filter: none;
+  }
+  .cross {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 22px;
+    height: 22px;
+    margin: -11px 0 0 -11px;
+    border: 1px solid rgb(255 255 255 / 35%);
+    border-radius: 50%;
+  }
+  .info {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .nname {
+    font-size: 1.3rem;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    color: var(--bright);
+  }
+  .info .rows-list > span {
+    display: flex;
+    justify-content: space-between;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--line);
+    font: 0.72rem var(--mono);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .info .rows-list > span > span:first-child {
+    color: var(--muted);
+  }
+  .info .rows-list > span > span:last-child {
+    color: var(--bright);
+  }
+  .contact {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    border-top: 1px solid var(--line);
+  }
+  .contact .btn {
+    padding: 9px 12px;
+  }
+</style>

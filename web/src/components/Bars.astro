@@ -1,0 +1,121 @@
+---
+// A single-series vertical bar chart (one measure, one axis), drawn as SVG with recessive
+// gridlines, sparse labels, and a hover tooltip per bar (handled by the page).
+interface Props {
+  data: { label: string; value: number; tip: string }[];
+  height?: number; // plot height in pixels
+  tone?: "bright" | "dim" | "ok";
+  unit?: string; // appended to axis values, e.g. '%'
+  max?: number;
+}
+const { data, height = 180, tone = "bright", unit = "", max: forcedMax } = Astro.props;
+const W = 1000;
+const H = 100; // drawn in a 1000 x 100 box, stretched to the plot's pixel size
+const raw = forcedMax ?? Math.max(1, ...data.map((d) => d.value));
+// Round the axis up to a tidy number.
+const mag = 10 ** Math.floor(Math.log10(raw));
+const max = Math.ceil(raw / mag) * mag;
+const step = W / Math.max(1, data.length);
+const gap = Math.min(8, step * 0.28);
+const ticks = [max, max / 2, 0];
+const labelEvery = Math.max(1, Math.ceil(data.length / 7));
+const fmt = (n: number) => (Number.isInteger(n) ? n.toLocaleString("en-US") : n.toFixed(1)) + unit;
+---
+
+<figure class={`bars ${tone}`} style={`--h:${height}px;--n:${data.length}`}>
+  <div class="axis-y label" aria-hidden="true">
+    {ticks.map((t) => <span>{fmt(t)}</span>)}
+  </div>
+  <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={data.map((d) => d.tip).join("; ")}>
+    {ticks.map((t) => <line x1="0" x2={W} y1={H - (t / max) * H} y2={H - (t / max) * H} class="grid" />)}
+    {
+      data.map((d, i) => {
+        const h = (d.value / max) * H;
+        return (
+          <g data-tip={d.tip} tabindex="0">
+            <rect x={i * step} y="0" width={step} height={H} class="hit" />
+            <rect x={i * step + gap / 2} y={H - h} width={Math.max(step - gap, 1)} height={d.value > 0 ? Math.max(h, 0.6) : 0} class="bar" style={`--k:${i}`} />
+          </g>
+        );
+      })
+    }
+  </svg>
+  <div class="axis-x label" aria-hidden="true">
+    {data.map((d, i) => <span>{i % labelEvery === 0 ? d.label : ""}</span>)}
+  </div>
+</figure>
+
+<style>
+  .bars {
+    display: grid;
+    grid-template-columns: 44px 1fr;
+    column-gap: 8px;
+    margin: 0;
+  }
+  svg {
+    display: block;
+    width: 100%;
+    height: var(--h);
+  }
+  .grid {
+    stroke: var(--line);
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+  }
+  .hit {
+    fill: transparent;
+  }
+  .bar {
+    fill: #d9d9d9;
+  }
+  .dim .bar {
+    fill: #7a7a7a;
+  }
+  .ok .bar {
+    fill: var(--ok);
+  }
+  g:hover .bar,
+  g:focus .bar {
+    fill: var(--bright);
+  }
+  g:hover .hit,
+  g:focus .hit {
+    fill: rgb(255 255 255 / 5%);
+  }
+  g:focus {
+    outline: none;
+  }
+  :global(.fx) .bar {
+    transform-box: fill-box;
+    transform-origin: bottom;
+    animation: rise 520ms var(--ease) both;
+    animation-delay: calc(150ms + var(--k) * 18ms);
+  }
+  @keyframes rise {
+    from {
+      transform: scaleY(0);
+    }
+  }
+  .axis-y {
+    height: var(--h);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    text-align: right;
+    font-size: 0.6rem;
+  }
+  .axis-y span:first-child {
+    transform: translateY(-40%);
+  }
+  .axis-y span:last-child {
+    transform: translateY(40%);
+  }
+  .axis-x {
+    grid-column: 2;
+    display: grid;
+    grid-template-columns: repeat(var(--n), 1fr);
+    margin-top: 6px;
+    font-size: 0.6rem;
+    white-space: nowrap;
+  }
+</style>

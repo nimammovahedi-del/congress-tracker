@@ -1,0 +1,414 @@
+---
+import "../styles/global.css";
+import { lastSync, stat, type Topic } from "../lib/db";
+import { ago, CONGRESS, SITE_NAME } from "../lib/format";
+
+interface Props {
+  title: string;
+  description?: string;
+  crumbs?: string[];
+}
+const { title, description = "Follow bills, votes, and your representatives in the U.S. Congress. Free.", crumbs = [] } = Astro.props;
+const [topics, synced] = await Promise.all([stat<Topic[]>("topics"), lastSync()]);
+const path = Astro.url.pathname;
+const current = (prefix: string) => (path === prefix || path.startsWith(`${prefix}/`) ? "page" : undefined);
+const brand = SITE_NAME.toUpperCase().replaceAll(" ", "_");
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title === SITE_NAME ? title : `${title} · ${SITE_NAME}`}</title>
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#050505" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preload" href="/fonts/switzer-400.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/switzer-300.woff2" as="font" type="font/woff2" crossorigin />
+    <script is:inline>
+      if (!matchMedia("(prefers-reduced-motion: reduce)").matches) document.documentElement.classList.add("fx");
+    </script>
+  </head>
+  <body>
+    <header class="site-bar">
+      <a class="brand" href="/"><span class="sq" aria-hidden="true"></span>{brand}</a>
+      {
+        crumbs.length > 0 && (
+          <p class="crumbs label">
+            {crumbs.map((c, i) => (
+              <>
+                {i > 0 && <span class="sep">/</span>}
+                <span class={i === crumbs.length - 1 ? "here" : undefined}>{c}</span>
+              </>
+            ))}
+          </p>
+        )
+      }
+
+      <nav id="site-nav" class="nav" aria-label="Main">
+        <ul>
+          <li class="nav-topics">
+            <a href="/topics" aria-current={current("/topics")}>Topics<span class="caret" aria-hidden="true">▾</span></a>
+            {
+              topics && topics.length > 0 && (
+                <div class="mega">
+                  <div class="mega-inner">
+                    <p class="label mega-title">Directories // Policy areas</p>
+                    <ul class="mega-areas">
+                      {topics.map((t, i) => (
+                        <li class={i === 0 ? "first" : undefined}>
+                          <a href={`/topics/${t.slug}`}>
+                            <span>{t.area}</span>
+                            <span class="count">{t.bills.toLocaleString("en-US")}</span>
+                          </a>
+                          <div class="mega-subs">
+                            <p class="label">{t.area}</p>
+                            <ul>
+                              {t.subjects.slice(0, 9).map((s) => (
+                                <li>
+                                  <a href={`/topics/${t.slug}?subject=${s.slug}`}>{s.name}</a>
+                                </li>
+                              ))}
+                            </ul>
+                            <a class="mega-all label" href={`/topics/${t.slug}`}>
+                              Open directory →
+                            </a>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )
+            }
+          </li>
+          <li><a href="/votes" aria-current={current("/votes")}>Votes</a></li>
+          <li><a href="/members" aria-current={current("/members")}>Members</a></li>
+          <li><a href="/find" aria-current={current("/find")}>Find my rep</a></li>
+          <li><a href="/analytics" aria-current={current("/analytics")}>Analytics</a></li>
+          <li class="only-mobile"><a href="/search">Search</a></li>
+          <li class="only-mobile"><a href="/about">About the data</a></li>
+        </ul>
+      </nav>
+
+      <div class="status label">
+        <span class="hide-sm">Congress: <b>{CONGRESS}</b></span>
+        <span class="sync"><i class="dot ok" aria-hidden="true"></i>Synced <b>{ago(synced)}</b></span>
+        <a class="search-link" href="/search" aria-current={current("/search")}>⌕ Search</a>
+      </div>
+      <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">
+        <span class="visually-hidden">Menu</span>
+        <span class="bars" aria-hidden="true"><i></i><i></i></span>
+      </button>
+    </header>
+
+    <main>
+      <slot />
+    </main>
+
+    <footer class="site-foot label">
+      <span>Built on public data: Congress.gov · GovInfo · House Clerk · Voteview · Federal Register</span>
+      <span><a href="/about">About the data</a> · Not affiliated with Congress</span>
+      <span class="faint">{CONGRESS}th Congress · {new Date().getFullYear()}</span>
+    </footer>
+
+    <script>
+      import { boot, interceptLinks } from "../scripts/fx";
+
+      boot();
+      interceptLinks();
+
+      const toggle = document.querySelector<HTMLButtonElement>(".menu-toggle");
+      toggle?.addEventListener("click", () => {
+        const open = toggle.getAttribute("aria-expanded") !== "true";
+        toggle.setAttribute("aria-expanded", String(open));
+        document.body.classList.toggle("menu-open", open);
+      });
+    </script>
+  </body>
+</html>
+
+<style>
+  .site-bar {
+    position: fixed;
+    inset: 0 0 auto;
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    height: var(--bar);
+    padding: 0 var(--gap);
+    background: rgb(5 5 5 / 92%);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font: 500 0.72rem/1 var(--mono);
+    letter-spacing: 0.16em;
+    color: var(--bright);
+    white-space: nowrap;
+  }
+  .sq {
+    width: 8px;
+    height: 8px;
+    background: var(--bright);
+  }
+  .crumbs {
+    display: flex;
+    gap: 8px;
+    margin: 0;
+    padding-left: 22px;
+    border-left: 1px solid var(--line-2);
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .crumbs .here {
+    color: var(--bright);
+  }
+  .crumbs .sep {
+    color: var(--faint);
+  }
+  .nav {
+    flex: 1;
+  }
+  .nav ul {
+    display: flex;
+    gap: 4px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .nav > ul > li > a {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    font: 400 0.7rem/1 var(--mono);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    transition: color 120ms ease;
+  }
+  .nav > ul > li > a:hover,
+  .nav > ul > li > a[aria-current="page"] {
+    color: var(--bright);
+  }
+  .nav > ul > li > a[aria-current="page"]::before {
+    content: "[";
+    margin-right: 2px;
+  }
+  .nav > ul > li > a[aria-current="page"]::after {
+    content: "]";
+    margin-left: 2px;
+  }
+  .caret {
+    font-size: 0.6rem;
+  }
+  .status {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    white-space: nowrap;
+  }
+  .status b {
+    font-weight: 400;
+    color: var(--bright);
+  }
+  .sync {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .search-link {
+    padding-left: 18px;
+    border-left: 1px solid var(--line-2);
+    color: var(--bright);
+  }
+  .only-mobile {
+    display: none;
+  }
+
+  /* Topics: a full-width panel; hover a policy area to see its subtopics on the right. */
+  .mega {
+    position: fixed;
+    top: var(--bar);
+    left: 0;
+    right: 0;
+    display: none;
+    background: rgb(7 7 7 / 98%);
+    border-bottom: 1px solid var(--line-2);
+  }
+  .nav-topics:hover .mega,
+  .nav-topics:focus-within .mega {
+    display: block;
+  }
+  :global(.fx) .mega {
+    animation: unfold 260ms var(--ease) both;
+  }
+  .mega-inner {
+    position: relative;
+    max-width: 1680px;
+    margin: 0 auto;
+    padding: 22px var(--gap) 26px;
+  }
+  .mega-title {
+    margin-bottom: 14px;
+  }
+  .mega-areas {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    column-gap: 22px;
+    width: 68%;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .mega-areas > li > a {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--line);
+    font-size: 0.86rem;
+    color: #bdbdbd;
+  }
+  .count {
+    font: 0.68rem var(--mono);
+    color: var(--faint);
+  }
+  .mega-areas > li:hover > a,
+  .mega-areas > li:focus-within > a {
+    color: var(--bright);
+    border-bottom-color: var(--muted);
+  }
+  .mega-subs {
+    display: none;
+    position: absolute;
+    top: 22px;
+    right: var(--gap);
+    bottom: 26px;
+    width: calc(32% - 2 * var(--gap));
+    padding-left: 24px;
+    border-left: 1px solid var(--line-2);
+  }
+  .mega-areas > li:hover > .mega-subs,
+  .mega-areas > li:focus-within > .mega-subs,
+  .mega-areas:not(:hover) > li.first > .mega-subs {
+    display: block;
+  }
+  .mega-subs ul {
+    list-style: none;
+    margin: 12px 0 16px;
+    padding: 0;
+  }
+  .mega-subs li {
+    padding: 5px 0;
+    font-size: 0.88rem;
+    color: #bdbdbd;
+  }
+  .mega-subs li a::before {
+    content: "> ";
+    font-family: var(--mono);
+    color: var(--faint);
+  }
+  .mega-all {
+    color: var(--bright);
+  }
+
+  .menu-toggle {
+    display: none;
+    margin-left: auto;
+    padding: 10px;
+    margin-right: -10px;
+    background: none;
+    border: 0;
+    color: var(--bright);
+    cursor: pointer;
+  }
+  .bars {
+    display: grid;
+    gap: 6px;
+    width: 20px;
+  }
+  .bars i {
+    height: 1px;
+    background: currentColor;
+    transition: transform 120ms ease;
+  }
+  :global(body.menu-open) .bars i:first-child {
+    transform: translateY(3.5px) rotate(45deg);
+  }
+  :global(body.menu-open) .bars i:last-child {
+    transform: translateY(-3.5px) rotate(-45deg);
+  }
+
+  @media (max-width: 1180px) {
+    .crumbs,
+    .hide-sm {
+      display: none;
+    }
+  }
+  @media (max-width: 900px) {
+    .menu-toggle {
+      display: block;
+    }
+    .status {
+      margin-left: auto;
+    }
+    .search-link {
+      display: none;
+    }
+    .nav {
+      display: none;
+      position: fixed;
+      inset: var(--bar) 0 0;
+      background: var(--bg);
+      padding: 18px var(--gap);
+    }
+    :global(body.menu-open) .nav {
+      display: block;
+    }
+    .nav ul {
+      flex-direction: column;
+      gap: 0;
+    }
+    .nav > ul > li > a {
+      width: 100%;
+      padding: 16px 0;
+      font: 400 1.9rem/1.1 var(--font);
+      letter-spacing: -0.03em;
+      text-transform: none;
+      color: var(--bright);
+      border-bottom: 1px solid var(--line);
+    }
+    .nav > ul > li > a[aria-current="page"]::before,
+    .nav > ul > li > a[aria-current="page"]::after,
+    .caret,
+    .mega {
+      display: none !important;
+    }
+    .only-mobile {
+      display: block;
+    }
+  }
+
+  .site-foot {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 10px 24px;
+    max-width: 1680px;
+    margin: 0 auto;
+    padding: 18px var(--gap) 28px;
+    border-top: 1px solid var(--line);
+  }
+  .site-foot a {
+    color: var(--bright);
+  }
+</style>

@@ -1,0 +1,238 @@
+---
+import Panel from "../../components/Panel.astro";
+import Terminal from "../../components/Terminal.astro";
+import VoteVisualizer from "../../components/VoteVisualizer.astro";
+import Layout from "../../layouts/Layout.astro";
+import { memberStats, memberVotes, row, rows, type RollCall } from "../../lib/db";
+import { billNumberFromId, consoleDate } from "../../lib/format";
+import { passed, seatInfo, threshold } from "../../lib/votes";
+
+const id = Astro.params.id ?? "";
+const r = await row<RollCall>("SELECT * FROM roll_calls WHERE id = ?", id);
+if (!r) return Astro.rewrite("/404");
+
+const [votes, stats, bill, session] = await Promise.all([
+  memberVotes(id),
+  memberStats(),
+  r.bill_id ? row<{ title: string; status: string }>("SELECT title, status FROM bills WHERE id = ?", r.bill_id) : null,
+  // Every vote in this chamber's session, for the margin timeline at the top.
+  rows<{ id: string; roll_number: number; yea: number; nay: number; vote_date: string | null; question: string | null }>(
+    "SELECT id, roll_number, yea, nay, vote_date, question FROM roll_calls WHERE congress = ? AND chamber = ? AND session = ? ORDER BY roll_number",
+    r.congress,
+    r.chamber,
+    r.session,
+  ),
+]);
+
+const chamberName = r.chamber === "senate" ? "Senate" : "House";
+const t = threshold(r);
+const ok = passed(r);
+const diff = r.yea - r.nay;
+const voting = r.yea + r.nay;
+const passMargin = r.yea - t.needed;
+const maxSide = Math.max(1, ...session.map((s) => Math.max(s.yea, s.nay)));
+const W = 1000;
+const step = W / Math.max(session.length, 1);
+const sessionLabel = `${r.congress}-${r.session}`;
+const lines = [
+  { text: "Establishing link to roll call archive…" },
+  { text: `Loading ${chamberName.toUpperCase()} roll ${r.roll_number} (${sessionLabel})…` },
+  { text: `Mapping ${votes.length} member nodes…` },
+  { text: r.source === "voteview" ? "Source: Voteview (UCLA) · Senate record" : "Source: Office of the Clerk · House record", tone: "bright" as const },
+  { text: "NODE_MAPPING_READY", tone: "ok" as const },
+];
+---
+
+<Layout title={`${chamberName} roll ${r.roll_number}: ${bill?.title ?? r.question ?? ""}`} crumbs={["Votes", `${chamberName} · Roll ${r.roll_number}`]}>
+  <div class="console">
+    <Panel class="strip-panel" plain>
+      <div class="strip-head label">
+        <span>Yea margin (top)</span>
+        <span class="faint">{chamberName} · session {sessionLabel} · {session.length} roll calls</span>
+        <span>Nay margin (bottom)</span>
+      </div>
+      <svg class="strip" viewBox={`0 0 ${W} 64`} preserveAspectRatio="none" role="img" aria-label="Margins of every vote in this session">
+        {
+          session.map((s, i) => {
+            const up = (s.yea / maxSide) * 30;
+            const down = (s.nay / maxSide) * 30;
+            return (
+              <a href={`/votes/${s.id}`} class={s.id === r.id ? "here" : undefined}>
+                <title>
+                  Roll {s.roll_number} · {consoleDate(s.vote_date)} · {s.yea}–{s.nay} · {s.question}
+                </title>
+                <rect x={(i * step).toFixed(2)} y={(32 - up).toFixed(2)} width={Math.max(step - 1, 0.6).toFixed(2)} height={up.toFixed(2)} class="up" style={`--k:${i}`} />
+                <rect x={(i * step).toFixed(2)} y="33" width={Math.max(step - 1, 0.6).toFixed(2)} height={down.toFixed(2)} class="down" style={`--k:${i}`} />
+              </a>
+            );
+          })
+        }
+      </svg>
+    </Panel>
+
+    <div class="cols cols-side main-grid">
+      <div class="stack">
+        <Panel label="Final tally">
+          <span slot="head" class={`status-tag ${ok === true ? "ok" : ok === false ? "alert" : "neutral"}`}>{r.result ?? "Recorded"}</span>
+          <div class="panel-body tally">
+            <div class="big" data-count={r.yea}>{r.yea}</div>
+            <p class="label"><span class="sq-w"></span> Affirmative [yea]</p>
+            <div class="big dimbig" data-count={r.nay}>{r.nay}</div>
+            <p class="label"><span class="sq-d"></span> Negative [nay]</p>
+          </div>
+        </Panel>
+
+        <Panel label="Margin analysis" code="0xMRG_ANL">
+          <div class="panel-body">
+            <div class="rows-list">
+              <div><span>Differential</span><span>{diff >= 0 ? "+" : ""}{diff} votes</span></div>
+            </div>
+            <div class="mline" style={`--yea:${voting ? (100 * r.yea) / voting : 0}%;--thr:${voting ? Math.min(100, (100 * t.needed) / voting) : 50}%`}>
+              <span class="mfill"></span><span class="mthr"></span>
+            </div>
+            <div class="rows-list">
+              <div>
+                <span>Threshold ({t.needed})</span>
+                <span class={passMargin >= 0 ? "ok" : "alert"}>{passMargin >= 0 ? `Clears (+${passMargin})` : `Short (${passMargin})`}</span>
+              </div>
+            </div>
+          </div>
+          <div class="panel-body">
+            <p class="label meta-title">Procedural_meta</p>
+            <div class="rows-list">
+              <div><span>Session</span><span>{sessionLabel}</span></div>
+              <div><span>Roll_call</span><span>{r.roll_number}</span></div>
+              <div><span>Date</span><span>{consoleDate(r.vote_date)}</span></div>
+              <div><span>Majority</span><span>{t.label}</span></div>
+              <div><span>Chamber</span><span>{chamberName.toUpperCase()}</span></div>
+              <div><span>Present</span><span>{r.present}</span></div>
+              <div><span>Not_voting</span><span>{r.not_voting}</span></div>
+              {r.bill_id && <div><span>Measure</span><span><a href={`/bills/${r.bill_id}`}>{billNumberFromId(r.bill_id)} →</a></span></div>}
+            </div>
+            <div class="links">
+              <a class="btn ghost" href="/votes">‹ Back to directory</a>
+              {r.official_url && <a class="btn ghost" href={r.official_url} target="_blank" rel="noopener">Official record ↗</a>}
+            </div>
+          </div>
+          <Terminal lines={lines} delay={500} />
+        </Panel>
+      </div>
+
+      <Panel class="viz-panel">
+        <VoteVisualizer rollCall={r} votes={votes} seats={seatInfo(votes, stats)} billTitle={bill?.title} />
+      </Panel>
+    </div>
+  </div>
+</Layout>
+
+<style>
+  .strip-panel {
+    margin-bottom: var(--gap);
+  }
+  .strip-panel :global(.panel-frame) {
+    background: transparent;
+    border-width: 0 0 1px;
+  }
+  .strip-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 2px 8px;
+  }
+  .strip {
+    display: block;
+    width: 100%;
+    height: 64px;
+  }
+  .strip rect.up {
+    fill: #5d5d5d;
+  }
+  .strip rect.down {
+    fill: #333;
+  }
+  .strip a:hover rect.up {
+    fill: #bdbdbd;
+  }
+  .strip a:hover rect.down {
+    fill: #777;
+  }
+  .strip a.here rect {
+    fill: #fff;
+  }
+  :global(.fx) .strip rect {
+    animation: bar-in 300ms ease both;
+    animation-delay: calc(var(--k) * 1.2ms);
+    transform-box: fill-box;
+  }
+  :global(.fx) .strip rect.up {
+    transform-origin: bottom;
+  }
+  :global(.fx) .strip rect.down {
+    transform-origin: top;
+  }
+  @keyframes bar-in {
+    from {
+      transform: scaleY(0);
+    }
+  }
+  .tally {
+    padding-top: 22px;
+  }
+  .tally .label {
+    margin: 10px 0 22px;
+  }
+  .dimbig {
+    color: #6f6f6f;
+  }
+  .sq-w,
+  .sq-d {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    margin-right: 8px;
+    background: var(--bright);
+  }
+  .sq-d {
+    background: #555;
+  }
+  .mline {
+    position: relative;
+    height: 2px;
+    margin: 18px 0 12px;
+    background: #2a2a2a;
+  }
+  .mfill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: var(--yea);
+    background: var(--bright);
+  }
+  :global(.fx) .mfill {
+    animation: grow 900ms var(--ease) both 250ms;
+  }
+  .mthr {
+    position: absolute;
+    left: var(--thr);
+    top: -5px;
+    width: 2px;
+    height: 12px;
+    background: var(--alert);
+  }
+  .meta-title {
+    margin-bottom: 6px;
+  }
+  .links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 16px;
+  }
+  .links .btn {
+    padding: 9px 12px;
+  }
+  @media (max-width: 860px) {
+    .strip-head span:nth-child(2) {
+      display: none;
+    }
+  }
+</style>

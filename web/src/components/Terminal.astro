@@ -1,0 +1,71 @@
+---
+// A log that types itself out, one line after another, ending on a blinking cursor.
+export interface Line {
+  text: string;
+  tone?: "dim" | "bright" | "ok" | "alert";
+  href?: string;
+}
+interface Props {
+  lines: Line[];
+  delay?: number; // ms before the first line
+}
+const { lines, delay = 350 } = Astro.props;
+---
+
+<ol class="term" style={`--d:${delay}ms`}>
+  {
+    lines.map((l, k) => (
+      <li class={l.tone ?? "dim"} style={`--k:${k};--len:${Math.min(l.text.length + 2, 90)}`}>
+        <span>
+          {">"} {l.href ? <a href={l.href}>{l.text}</a> : l.text}
+        </span>
+      </li>
+    ))
+  }
+  <li class="bright" style={`--k:${lines.length};--len:2`}><span>{">"} <i class="block-cursor"></i></span></li>
+</ol>
+
+<style>
+  .term {
+    list-style: none;
+    margin: 0;
+    padding: var(--pad);
+    font: 400 0.7rem/1.75 var(--mono);
+    letter-spacing: 0.04em;
+    color: var(--faint);
+  }
+  li span {
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    vertical-align: bottom;
+  }
+  .bright {
+    color: #d6d6d6;
+  }
+  .ok {
+    color: var(--ok);
+  }
+  .alert {
+    color: var(--alert);
+  }
+  a:hover {
+    text-decoration: underline;
+  }
+  :global(.fx) li span {
+    animation: type 380ms steps(var(--len)) both;
+    animation-delay: calc(var(--d) + var(--k) * 230ms);
+  }
+  @keyframes type {
+    from {
+      max-width: 0;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :global(.fx) li span {
+      animation: none;
+    }
+  }
+</style>
