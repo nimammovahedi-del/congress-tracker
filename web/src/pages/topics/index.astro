@@ -9,14 +9,14 @@ const largest = Math.max(1, ...topics.map((t) => t.bills));
 const total = topics.reduce((n, t) => n + t.bills, 0);
 ---
 
-<Layout title="Topics" crumbs={["Directories", "Policy areas"]}>
+<Layout title="Topics" crumbs={[{ label: "Topics" }]}>
   <div class="console">
     <Panel>
       <div class="panel-body head">
-        <p class="label"><span data-scramble>Directories // Policy areas</span></p>
+        <p class="label"><span data-scramble>{topics.length} policy areas</span></p>
         <h1 class="cursor"><span data-scramble>Browse by topic</span></h1>
         <p class="intro">
-          Every bill is filed under one of {topics.length} policy areas by the Congressional Research Service. {total.toLocaleString("en-US")} measures indexed.
+          The Congressional Research Service files every bill under one policy area. Pick one to see its bills, newest first, and narrow them by subtopic. {total.toLocaleString("en-US")} bills and resolutions in all.
         </p>
       </div>
     </Panel>
@@ -27,18 +27,18 @@ const total = topics.reduce((n, t) => n + t.bills, 0);
           <a class="tile panel" href={`/topics/${t.slug}`} style={`--i:${Math.min(i, 8)}`}>
             <div class="panel-frame">
               <div class="tile-head">
-                <span class="label">DIR_{String(i + 1).padStart(2, "0")}</span>
-                <span class="label">{t.laws} enacted</span>
+                <span class="label">{t.laws} became law</span>
+                <span class="tile-go" aria-hidden="true">See bills →</span>
               </div>
               <h2>{t.area}</h2>
               <div class="tile-num">
                 <span class="num-big" data-count={t.bills}>{t.bills.toLocaleString("en-US")}</span>
-                <span class="label">measures</span>
+                <span class="label">bills</span>
               </div>
               <SegBar value={t.bills} max={largest} cells={24} height={6} tone="bright" />
               <ul>
                 {t.subjects.slice(0, 3).map((s) => (
-                  <li>&gt; {s.name}</li>
+                  <li>{s.name}</li>
                 ))}
               </ul>
             </div>
@@ -75,8 +75,18 @@ const total = topics.reduce((n, t) => n + t.bills, 0);
       background 140ms ease;
   }
   .tile:hover .panel-frame {
-    border-color: var(--faint);
-    background: var(--panel-2);
+    border-color: var(--muted);
+    background: var(--raise);
+  }
+  /* A quiet cue that the whole tile is a link; it brightens with the tile. */
+  .tile-go {
+    font: 500 var(--fs-sm)/1.45 var(--font);
+    color: var(--muted);
+    white-space: nowrap;
+    transition: color 120ms ease;
+  }
+  .tile:hover .tile-go {
+    color: var(--bright);
   }
   .tile:hover {
     color: inherit;
@@ -84,11 +94,13 @@ const total = topics.reduce((n, t) => n + t.bills, 0);
   .tile-head {
     display: flex;
     justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
   }
   h2 {
     font-size: 1.3rem;
     margin: 4px 0 0;
-    min-height: 2.1em;
+    min-height: 2.4em;
   }
   .tile-num {
     display: flex;
@@ -104,15 +116,50 @@ const total = topics.reduce((n, t) => n + t.bills, 0);
     list-style: none;
     margin: 4px 0 0;
     padding: 0;
-    font: 400 0.72rem/1.8 var(--mono);
-    color: var(--faint);
+    font: 400 var(--fs-sm)/1.45 var(--font);
+    color: var(--muted);
   }
-  li {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  li + li {
+    margin-top: 4px;
   }
   .tile:hover li {
-    color: var(--muted);
+    color: var(--soft);
+  }
+  /* Phones: a compact row per policy area (name and count, the bar, then how many became
+     law), so 31 areas fit in a few screens instead of one tall card each. */
+  @media (max-width: 640px) {
+    .grid {
+      gap: 12px;
+    }
+    .tile .panel-frame {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas: "title num" "bar bar" "head head";
+      align-items: baseline;
+      gap: 10px 14px;
+      padding: 14px 16px;
+    }
+    .tile h2 {
+      grid-area: title;
+      min-height: 0;
+      margin: 0;
+      font-size: 1.15rem;
+    }
+    .tile-num {
+      grid-area: num;
+      gap: 6px;
+    }
+    .num-big {
+      font-size: 1.6rem;
+    }
+    .tile .panel-frame > :global(.segbar) {
+      grid-area: bar;
+    }
+    .tile-head {
+      grid-area: head;
+    }
+    .tile ul {
+      display: none;
+    }
   }
 </style>

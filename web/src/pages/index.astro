@@ -2,10 +2,10 @@
 import Panel from "../components/Panel.astro";
 import SegBar from "../components/SegBar.astro";
 import StatusTag from "../components/StatusTag.astro";
-import Terminal, { type Line } from "../components/Terminal.astro";
 import Layout from "../layouts/Layout.astro";
 import { BILL_LIST_COLUMNS, BILL_LIST_JOIN, row, rows, stat, type BillListItem, type RollCall, type Topic } from "../lib/db";
-import { addDays, billNumber, billNumberFromId, consoleDate, formatShortDate, formatDate, SITE_NAME } from "../lib/format";
+import { addDays, billNumber, consoleDate, formatShortDate, formatDate, CONGRESS, lastName, ordinal, partyClass, SITE_NAME } from "../lib/format";
+import { passed, voteRef } from "../lib/votes";
 
 // "This week" is the 7 days ending on the latest day with any action, so the page stays
 // useful during recesses.
@@ -28,9 +28,9 @@ const [overview, moved, votes, laws, introduced, week, topics] = await Promise.a
     `SELECT ${BILL_LIST_COLUMNS} FROM bills b ${BILL_LIST_JOIN}
       WHERE b.status = 'became_law' ORDER BY b.status_date DESC LIMIT 5`,
   ),
-  rows<BillListItem>(
-    `SELECT ${BILL_LIST_COLUMNS} FROM bills b ${BILL_LIST_JOIN}
-      WHERE b.introduced_date >= ? ORDER BY b.introduced_date DESC, b.cosponsor_count DESC LIMIT 5`,
+  rows<BillListItem & { introduced_date: string | null }>(
+    `SELECT ${BILL_LIST_COLUMNS}, b.introduced_date FROM bills b ${BILL_LIST_JOIN}
+      WHERE b.introduced_date >= ? ORDER BY b.introduced_date DESC, b.cosponsor_count DESC LIMIT 8`,
     weekStart,
   ),
   row<{ introduced: number; moved: number; laws: number; votes: number }>(
@@ -43,309 +43,433 @@ const [overview, moved, votes, laws, introduced, week, topics] = await Promise.a
   stat<Topic[]>("topics"),
 ]);
 
-const lines: Line[] = [
-  { text: `Window: ${consoleDate(weekStart)} → ${consoleDate(latest)}` },
-  { text: `${week?.introduced ?? 0} new bills and resolutions introduced` },
-  { text: `${week?.moved ?? 0} measures advanced past a chamber` },
-  { text: `${week?.laws ?? 0} signed into law this week · ${overview?.laws ?? 0} this Congress` },
-  { text: `${week?.votes ?? 0} roll-call votes recorded`, tone: "bright" },
-  ...(votes[0]
-    ? [{ text: `Latest: ${votes[0].chamber === "senate" ? "Senate" : "House"} roll ${votes[0].roll_number} · ${votes[0].result} ${votes[0].yea}–${votes[0].nay}`, tone: "bright" as const, href: `/votes/${votes[0].id}` }]
-    : []),
-  { text: "SYSTEM_READY_FOR_QUERY", tone: "ok" },
-];
 const yeaMax = Math.max(overview?.yea_total ?? 0, overview?.nay_total ?? 0, 1);
-const chamberOf = (type: string) => (type.startsWith("s") ? "S" : "H");
+// Open the first tab that has something in it.
+const firstTab = moved.length ? "moving" : "latest-votes";
 ---
 
 <Layout title={SITE_NAME}>
   <div class="console">
     <Panel class="hero">
       <div class="panel-body hero-body">
-        <p class="label" data-scramble>Legislative intelligence // This week in Congress</p>
-        <h1 class="cursor"><span data-scramble>{SITE_NAME}</span></h1>
-        <p class="intro">
-          Free monitoring of every bill, roll-call vote, and member of the 119th United States Congress. Week of {formatShortDate(weekStart)} – {formatDate(latest)}.
-        </p>
+        <div class="hero-text">
+          <p class="label"><span data-scramble>Week of {formatShortDate(weekStart)} – {formatDate(latest)}</span></p>
+          <h1 class="cursor"><span data-scramble>This week in Congress</span></h1>
+          <p class="intro">
+            {SITE_NAME} is a free, nonpartisan record of every bill, vote, and member of the {ordinal(CONGRESS)} Congress. These numbers cover the most recent week with activity.
+            {(week?.votes ?? 0) === 0 && " There were no recorded votes that week, which can happen when Congress is on a break. The Latest votes tab below has the most recent ones."}
+          </p>
+        </div>
+        <div class="week">
+          <a class="statbox week-box" href="#new">
+            <span class="label">New bills introduced</span>
+            <span class="value" data-count={week?.introduced ?? 0}>{week?.introduced ?? 0}</span>
+            <span class="go-hint" aria-hidden="true">→</span>
+          </a>
+          <a class="statbox week-box" href="#moving">
+            <span class="label">Bills that moved forward</span>
+            <span class="value" data-count={week?.moved ?? 0}>{week?.moved ?? 0}</span>
+            <span class="go-hint" aria-hidden="true">→</span>
+          </a>
+          <a class="statbox week-box" href="#laws">
+            <span class="label">Signed into law</span>
+            <span class="value ok" data-count={week?.laws ?? 0}>{week?.laws ?? 0}</span>
+            <span class="go-hint" aria-hidden="true">→</span>
+          </a>
+          <a class="statbox week-box" href="#latest-votes">
+            <span class="label">Recorded votes</span>
+            <span class="value" data-count={week?.votes ?? 0}>{week?.votes ?? 0}</span>
+            <span class="go-hint" aria-hidden="true">→</span>
+          </a>
+        </div>
+      </div>
+    </Panel>
 
-        <div class="aggregates">
+    <Panel class="search-panel">
+      <form class="panel-body cmd" action="/search" role="search">
+        <label class="cmd-label" for="home-q">Search bills, members, and topics</label>
+        <div class="cmd-line">
+          <span aria-hidden="true">&gt;</span>
+          <input id="home-q" name="q" type="search" placeholder="Try H.R. 1 or veterans" autocomplete="off" />
+          <button class="go" type="submit">Search</button>
+        </div>
+        <ul class="quick">
+          <li><a href="/find">Find your representatives <span aria-hidden="true">→</span></a></li>
+          <li><a href="/topics">Browse bills by topic <span aria-hidden="true">→</span></a></li>
+          <li><a href="/votes">See every vote <span aria-hidden="true">→</span></a></li>
+          <li><a href="/members">All members of Congress <span aria-hidden="true">→</span></a></li>
+        </ul>
+      </form>
+    </Panel>
+
+    <Panel class="activity">
+      <div data-tabs>
+        <div class="tabbar">
+          <a class="tab-link" href="#moving" aria-selected={firstTab === "moving" ? "true" : undefined}>Moving forward <span class="n">{moved.length}</span></a>
+          <a class="tab-link" href="#latest-votes" aria-selected={firstTab === "latest-votes" ? "true" : undefined}>Latest votes</a>
+          <a class="tab-link" href="#laws">New laws</a>
+          <a class="tab-link" href="#new">Just introduced <span class="n">{week?.introduced ?? 0}</span></a>
+        </div>
+
+        <section class="tab-pane" id="moving">
+          <header class="pane-head">
+            <h2>Bills that moved forward this week</h2>
+            <p>Passed the House or Senate, went to the President, or became law.</p>
+          </header>
+          {
+            moved.length ? (
+              <ol class="reclist">
+                {moved.map((b) => (
+                  <li>
+                    <a href={`/bills/${b.id}`}>
+                      <span class="tag">{billNumber(b.bill_type, b.number)}</span>
+                      <span class="rl-title">{b.title}</span>
+                      <span class="rl-meta"><StatusTag status={b.status} /><span>{consoleDate(b.status_date)}</span></span>
+                    </a>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p class="empty">No bills moved forward this week</p>
+            )
+          }
+        </section>
+
+        <section class="tab-pane" id="latest-votes">
+          <header class="pane-head">
+            <h2>Latest votes</h2>
+            <p>The {votes.length} most recent votes in the House and Senate where each member's vote was recorded.</p>
+          </header>
+          <ol class="reclist">
+            {
+              votes.map((v) => {
+                const ok = passed(v);
+                return (
+                  <li>
+                    <a href={`/votes/${v.id}`}>
+                      <span class="tag">{voteRef(v)}</span>
+                      <span class="rl-title has-sub">
+                        <span class="clamp-2">{v.bill_title ?? v.description ?? v.question}</span>
+                        {(v.bill_title ?? v.description) && v.question && <span class="rl-sub">{v.question}</span>}
+                      </span>
+                      <span class="rl-meta">
+                        <span class={`status-tag ${ok === true ? "ok" : ok === false ? "alert" : "neutral"}`}>{ok === true ? "Passed" : ok === false ? "Failed" : "Recorded"}</span>
+                        <span>{v.chamber === "senate" ? "Senate" : "House"} · {consoleDate(v.vote_date)}</span>
+                      </span>
+                    </a>
+                  </li>
+                );
+              })
+            }
+          </ol>
+          <p class="pager"><span>Showing the {votes.length} most recent</span><a href="/votes">See all votes →</a></p>
+        </section>
+
+        <section class="tab-pane" id="laws">
+          <header class="pane-head">
+            <h2>Recently signed into law</h2>
+            <p>{overview?.laws ?? 0} bills have become law this Congress. These are the newest.</p>
+          </header>
+          <ol class="reclist">
+            {
+              laws.map((b) => (
+                <li>
+                  <a href={`/bills/${b.id}`}>
+                    <span class="tag">{billNumber(b.bill_type, b.number)}</span>
+                    <span class="rl-title">{b.title}</span>
+                    <span class="rl-meta"><span>Signed {consoleDate(b.status_date)}</span></span>
+                  </a>
+                </li>
+              ))
+            }
+          </ol>
+        </section>
+
+        <section class="tab-pane" id="new">
+          <header class="pane-head">
+            <h2>Just introduced</h2>
+            <p>{week?.introduced ?? 0} new bills and resolutions this week. The newest, with the most cosponsors first:</p>
+          </header>
+          {
+            introduced.length ? (
+              <ol class="reclist">
+                {introduced.map((b) => (
+                  <li>
+                    <a href={`/bills/${b.id}`}>
+                      <span class="tag">{billNumber(b.bill_type, b.number)}</span>
+                      <span class="rl-title">{b.title}</span>
+                      <span class="rl-meta">
+                        {b.sponsor_name && (
+                          <span>
+                            {lastName(b.sponsor_name)} <span class={`party ${partyClass(b.sponsor_party)}`}>{b.sponsor_party}-{b.sponsor_state}</span>
+                          </span>
+                        )}
+                        <span>{consoleDate(b.introduced_date)}</span>
+                      </span>
+                    </a>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p class="empty">No new bills this week</p>
+            )
+          }
+        </section>
+      </div>
+    </Panel>
+
+    <div class="cols cols-main-side">
+      <Panel label="Browse bills by topic">
+        <div class="panel-body topics">
+          {
+            (topics ?? []).slice(0, 15).map((t) => (
+              <a class="topic" href={`/topics/${t.slug}`}>
+                <span>{t.area}</span>
+                <span class="label">{t.bills.toLocaleString("en-US")}</span>
+              </a>
+            ))
+          }
+          <a class="topic all" href="/topics"><span>All topics</span><span class="label">→</span></a>
+        </div>
+      </Panel>
+
+      <Panel label="This Congress so far">
+        <div class="panel-body so-far">
+          <div class="boxes">
+            <div class="statbox"><div class="label">Bills and resolutions</div><div class="value" data-count={overview?.bills ?? 0}>{(overview?.bills ?? 0).toLocaleString("en-US")}</div></div>
+            <div class="statbox"><div class="label">Became law</div><div class="value ok" data-count={overview?.laws ?? 0}>{overview?.laws ?? 0}</div></div>
+            <div class="statbox"><div class="label">Recorded votes</div><div class="value" data-count={overview?.votes ?? 0}>{(overview?.votes ?? 0).toLocaleString("en-US")}</div></div>
+            <div class="statbox"><div class="label">Votes that passed</div><div class="value" data-count={overview?.vote_pass_pct ?? 0} data-decimals="1" data-suffix="%">{overview?.vote_pass_pct ?? 0}%</div></div>
+          </div>
           <div class="agg">
             <div class="agg-head">
-              <span class="label">Total yea aggregate</span>
+              <span class="label">Yes votes cast by members</span>
               <span class="agg-num" data-count={overview?.yea_total ?? 0}>{(overview?.yea_total ?? 0).toLocaleString("en-US")}</span>
             </div>
-            <SegBar value={overview?.yea_total ?? 0} max={yeaMax} cells={34} tone="bright" label="Total yea votes cast this Congress" />
+            <SegBar value={overview?.yea_total ?? 0} max={yeaMax} cells={28} tone="bright" label="Total yes votes cast this Congress" />
           </div>
           <div class="agg">
             <div class="agg-head">
-              <span class="label">Total nay aggregate</span>
+              <span class="label">No votes cast by members</span>
               <span class="agg-num dimnum" data-count={overview?.nay_total ?? 0}>{(overview?.nay_total ?? 0).toLocaleString("en-US")}</span>
             </div>
-            <SegBar value={overview?.nay_total ?? 0} max={yeaMax} cells={34} tone="dim" label="Total nay votes cast this Congress" />
+            <SegBar value={overview?.nay_total ?? 0} max={yeaMax} cells={28} tone="dim" label="Total no votes cast this Congress" />
           </div>
+          <a class="more" href="/analytics">See trends and charts →</a>
         </div>
-
-        <div class="cols cols-4 boxes">
-          <div class="statbox"><div class="label">Total measures</div><div class="value" data-count={overview?.bills ?? 0}>{(overview?.bills ?? 0).toLocaleString("en-US")}</div></div>
-          <div class="statbox"><div class="label">Enacted into law</div><div class="value" data-count={overview?.laws ?? 0}>{overview?.laws ?? 0}</div></div>
-          <div class="statbox"><div class="label">Roll calls</div><div class="value" data-count={overview?.votes ?? 0}>{(overview?.votes ?? 0).toLocaleString("en-US")}</div></div>
-          <div class="statbox"><div class="label">Vote pass rate</div><div class="value ok" data-count={overview?.vote_pass_pct ?? 0} data-decimals="1" data-suffix="%">{overview?.vote_pass_pct ?? 0}%</div></div>
-        </div>
-      </div>
-    </Panel>
-
-    <div class="cols row-2">
-      <Panel label="Activity log" code="0xWK_LOG">
-        <Terminal lines={lines} />
-      </Panel>
-      <Panel invert class="command-panel">
-        <form class="panel-body cmd" action="/search" role="search">
-          <label class="label" for="home-q">Command input // Search</label>
-          <div class="cmd-line">
-            <span>&gt;</span>
-            <input id="home-q" name="q" type="search" placeholder="bill, topic, H.R. 1, or member" autocomplete="off" />
-            <button class="go" type="submit" aria-label="Search">Enter</button>
-          </div>
-          <p class="hint">
-            Or <a href="/find">locate your representatives</a> · <a href="/votes">open the vote directory</a>
-          </p>
-        </form>
       </Panel>
     </div>
-
-    <div class="cols cols-2 tables">
-      <Panel label="Record queue // Bills on the move" code={`${moved.length} THIS WEEK`}>
-        {
-          moved.length ? (
-            <div class="table-scroll">
-              <table class="rtable">
-                <thead><tr><th>Ch</th><th>Measure</th><th>Subject</th><th>Status</th></tr></thead>
-                <tbody>
-                  {moved.map((b) => (
-                    <tr data-href={`/bills/${b.id}`}>
-                      <td class="mono">{chamberOf(b.bill_type)}</td>
-                      <td><a class="tag" href={`/bills/${b.id}`}>{billNumber(b.bill_type, b.number)}</a></td>
-                      <td class="subject">{b.title}</td>
-                      <td><StatusTag status={b.status} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p class="empty">No measures advanced this week</p>
-          )
-        }
-      </Panel>
-
-      <Panel label="Latest roll calls" code="0xRC_FEED">
-        <div class="table-scroll">
-          <table class="rtable">
-            <thead><tr><th>ID</th><th>Ch</th><th>Measure</th><th>Subject</th><th>Date</th><th></th></tr></thead>
-            <tbody>
-              {
-                votes.map((v) => (
-                  <tr data-href={`/votes/${v.id}`}>
-                    <td class="mono">{v.roll_number}</td>
-                    <td class="mono">{v.chamber === "senate" ? "S" : "H"}</td>
-                    <td><a class="tag" href={`/votes/${v.id}`}>{v.bill_id ? billNumberFromId(v.bill_id) : `ROLL ${v.roll_number}`}</a></td>
-                    <td class="subject">{v.bill_title ?? v.description ?? v.question}</td>
-                    <td class="mono">{consoleDate(v.vote_date)}</td>
-                    <td><i class={`dot ${/fail|reject|not |defeat/i.test(v.result ?? "") ? "alert" : "ok"}`} title={v.result ?? ""} /></td>
-                  </tr>
-                ))
-              }
-            </tbody>
-          </table>
-        </div>
-        <p class="pager"><span>Showing 8 most recent</span><a href="/votes">Open directory →</a></p>
-      </Panel>
-
-      <Panel label="Enacted // Recently signed" code="0xPUB_LAW">
-        <div class="table-scroll">
-          <table class="rtable">
-            <thead><tr><th>Measure</th><th>Subject</th><th>Signed</th></tr></thead>
-            <tbody>
-              {
-                laws.map((b) => (
-                  <tr data-href={`/bills/${b.id}`}>
-                    <td><a class="tag" href={`/bills/${b.id}`}>{billNumber(b.bill_type, b.number)}</a></td>
-                    <td class="subject">{b.title}</td>
-                    <td class="mono">{consoleDate(b.status_date)}</td>
-                  </tr>
-                ))
-              }
-            </tbody>
-          </table>
-        </div>
-      </Panel>
-
-      <Panel label="Intake // Newly introduced" code={`${week?.introduced ?? 0} THIS WEEK`}>
-        {
-          introduced.length ? (
-            <div class="table-scroll">
-              <table class="rtable">
-                <thead><tr><th>Measure</th><th>Subject</th><th>Sponsor</th></tr></thead>
-                <tbody>
-                  {introduced.map((b) => (
-                    <tr data-href={`/bills/${b.id}`}>
-                      <td><a class="tag" href={`/bills/${b.id}`}>{billNumber(b.bill_type, b.number)}</a></td>
-                      <td class="subject">{b.title}</td>
-                      <td class="mono">
-                        {b.sponsor_name?.split(" ").at(-1)} <span class={`party ${b.sponsor_party === "D" ? "dem" : b.sponsor_party === "R" ? "rep" : "ind"}`}>{b.sponsor_party}-{b.sponsor_state}</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p class="empty">No new bills this week</p>
-          )
-        }
-      </Panel>
-    </div>
-
-    <Panel label="Directories // Browse by topic" code="0xDIR_IDX">
-      <div class="panel-body topics">
-        {
-          (topics ?? []).slice(0, 16).map((t) => (
-            <a class="topic" href={`/topics/${t.slug}`}>
-              <span>{t.area}</span>
-              <span class="label">{t.bills.toLocaleString("en-US")}</span>
-            </a>
-          ))
-        }
-        <a class="topic all" href="/topics"><span>All directories</span><span class="label">→</span></a>
-      </div>
-    </Panel>
   </div>
 </Layout>
 
 <style>
-  .console > :global(.panel) + :global(*),
   .console > * + * {
     margin-top: var(--gap);
   }
   .hero-body {
-    padding: clamp(20px, 3vw, 36px);
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    align-items: end;
+    gap: 28px 48px;
+    padding: clamp(20px, 3vw, 40px);
   }
   h1 {
-    margin: 10px 0 18px;
-    font-size: clamp(2.6rem, 1.6rem + 3.4vw, 5rem);
+    margin: 12px 0 18px;
+    font-size: clamp(2.4rem, 1.5rem + 3vw, 4.6rem);
   }
   .intro {
-    max-width: 58ch;
+    max-width: 52ch;
+    margin: 0;
     padding: 2px 0 2px 16px;
     border-left: 1px solid var(--line-2);
-    color: #bdbdbd;
+    color: #c4c4c4;
+    font-size: 1rem;
   }
-  .aggregates {
+  .week {
     display: grid;
-    gap: 22px;
-    margin: 34px 0 30px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
   }
-  .agg-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    margin-bottom: 10px;
-  }
-  .agg-num {
-    font: 300 clamp(1.6rem, 1.2rem + 1.4vw, 2.4rem)/1 var(--mono);
-    letter-spacing: -0.02em;
-    color: var(--bright);
-    font-variant-numeric: tabular-nums;
-  }
-  .agg-num.dimnum {
-    color: #7d7d7d;
-  }
-  .boxes {
-    gap: 12px;
-  }
-  .row-2 {
-    grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr);
-  }
-  .cmd {
+  .week-box {
+    position: relative;
     display: flex;
     flex-direction: column;
-    justify-content: center;
-    height: 100%;
-    min-height: 200px;
-    padding: 26px;
-  }
-  .cmd-line {
-    display: flex;
-    align-items: center;
     gap: 10px;
-    margin-top: 14px;
-    font: 500 1.4rem var(--mono);
-    border-bottom: 1px solid #c4c4c4;
+    min-height: 104px;
+    padding: 16px 18px;
+    transition:
+      border-color 120ms ease,
+      background 120ms ease;
   }
-  .cmd-line input {
-    flex: 1;
-    min-width: 0;
-    border: 0;
-    padding: 10px 0;
-    background: transparent;
-    color: #050505;
-    font: 500 1.05rem var(--mono);
-    caret-shape: block;
+  .week-box .value {
+    margin: auto 0 0;
+    font-size: clamp(1.8rem, 1.4rem + 1.2vw, 2.6rem);
+    font-weight: 300;
   }
-  .cmd-line input::placeholder {
-    color: #9a9a9a;
+  .go-hint {
+    position: absolute;
+    right: 16px;
+    bottom: 14px;
+    font-family: var(--mono);
+    color: var(--faint);
+    transition:
+      color 120ms ease,
+      transform 160ms var(--ease);
   }
-  .cmd-line input:focus-visible {
-    outline: none;
+  .week-box:hover {
+    border-color: var(--muted);
+    background: var(--raise);
   }
-  .go {
-    border: 1px solid #050505;
-    background: #050505;
-    color: #ececec;
-    font: 500 0.66rem var(--mono);
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    padding: 8px 12px;
-    cursor: pointer;
+  .week-box:hover .go-hint {
+    color: var(--bright);
+    transform: translateX(3px);
   }
-  .go:hover {
-    background: transparent;
-    color: #050505;
+
+  /* Search sits in the dark page like the rest: an inset field with one bright button.
+     Wide screens put the label beside the field so the panel stays two rows tall. */
+  .cmd {
+    display: grid;
+    grid-template-areas: "label" "line" "quick";
+    gap: 12px;
+    padding: clamp(16px, 2vw, 24px);
   }
-  .hint {
-    margin: 16px 0 0;
-    font: 0.72rem var(--mono);
-    color: #555;
+  .cmd-label {
+    grid-area: label;
+    font-size: clamp(1.15rem, 1rem + 0.5vw, 1.4rem);
+    font-weight: 500;
+    letter-spacing: -0.015em;
+    color: var(--bright);
   }
-  .hint a {
-    color: #050505;
-    text-decoration: underline;
-    text-underline-offset: 3px;
+  /* The field itself is styled in global.css (shared with Search and Find my rep). */
+  .cmd-line {
+    grid-area: line;
   }
+  .quick {
+    grid-area: quick;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .quick a {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 40px;
+    padding: 0 14px;
+    border: 1px solid var(--line-2);
+    font: 500 0.94rem var(--font);
+    color: var(--soft);
+    transition:
+      background 120ms ease,
+      border-color 120ms ease,
+      color 120ms ease;
+  }
+  .quick a:hover {
+    background: var(--panel-2);
+    border-color: var(--muted);
+    color: var(--text);
+  }
+  @media (min-width: 900px) {
+    .cmd {
+      grid-template-columns: max-content minmax(0, 1fr);
+      grid-template-areas: "label line" "quick quick";
+      align-items: center;
+      column-gap: 24px;
+    }
+  }
+
   .topics {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
     gap: 0 22px;
   }
   .topic {
     display: flex;
     justify-content: space-between;
+    align-items: center;
     gap: 12px;
-    padding: 11px 0;
+    min-height: 46px;
+    padding: 10px 8px;
     border-bottom: 1px solid var(--line);
-    font-size: 0.92rem;
+    font-size: 0.94rem;
     color: #c8c8c8;
+    transition: background 100ms ease;
   }
   .topic:hover {
     color: var(--bright);
+    background: var(--raise);
     border-bottom-color: var(--muted);
   }
   .topic.all {
     color: var(--bright);
   }
-  @media (max-width: 860px) {
-    .row-2 {
-      grid-template-columns: 1fr;
+  .so-far {
+    display: grid;
+    gap: 20px;
+  }
+  .boxes {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .agg-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .agg-num {
+    font: 300 clamp(1.3rem, 1.1rem + 0.6vw, 1.7rem)/1 var(--mono);
+    letter-spacing: -0.02em;
+    color: var(--bright);
+    font-variant-numeric: tabular-nums;
+  }
+  .agg-num.dimnum {
+    color: var(--muted);
+  }
+  .more {
+    justify-self: start;
+    padding: 6px 0;
+    font: 500 var(--fs-sm) var(--font);
+    color: var(--bright);
+  }
+  .more:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  @media (max-width: 960px) {
+    .hero-body {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+  @media (max-width: 640px) {
+    /* Phones list the eight biggest topics; "All topics" leads to the rest. */
+    .topic:nth-child(n + 9):not(.all) {
+      display: none;
+    }
+  }
+  @media (max-width: 520px) {
+    .week-box {
+      min-height: 92px;
+      padding: 12px 14px;
+    }
+    /* Phones: the four shortcuts sit two by two so the search panel stays short. */
+    .quick {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .quick a {
+      display: flex;
+      justify-content: space-between;
+      height: 100%;
+      min-height: 44px;
+      padding: 8px 12px;
+      font-size: 0.875rem;
+      line-height: 1.3;
     }
   }
 </style>

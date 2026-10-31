@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import { DB_PATH, ROOT, nowIso } from "./config.ts";
+import { columnMigrations } from "./migrations.ts";
 
 export type Value = string | number | boolean | null | undefined;
 export type Row = Record<string, Value>;
@@ -11,6 +12,9 @@ export function openDb(file: string = DB_PATH): DatabaseSync {
   const db = new DatabaseSync(file);
   db.exec("PRAGMA journal_mode = WAL;");
   db.exec(fs.readFileSync(path.join(ROOT, "db", "schema.sql"), "utf8"));
+  const has = (table: string, column: string) =>
+    (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === column);
+  for (const sql of columnMigrations(has)) db.exec(sql);
   return db;
 }
 

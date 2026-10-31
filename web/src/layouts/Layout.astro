@@ -3,16 +3,22 @@ import "../styles/global.css";
 import { lastSync, stat, type Topic } from "../lib/db";
 import { ago, CONGRESS, SITE_NAME } from "../lib/format";
 
+// One step of the breadcrumb trail shown above the page; the last one is the current page.
+export interface Crumb {
+  label: string;
+  href?: string;
+}
 interface Props {
   title: string;
   description?: string;
-  crumbs?: string[];
+  crumbs?: Crumb[];
 }
 const { title, description = "Follow bills, votes, and your representatives in the U.S. Congress. Free.", crumbs = [] } = Astro.props;
 const [topics, synced] = await Promise.all([stat<Topic[]>("topics"), lastSync()]);
 const path = Astro.url.pathname;
 const current = (prefix: string) => (path === prefix || path.startsWith(`${prefix}/`) ? "page" : undefined);
-const brand = SITE_NAME.toUpperCase().replaceAll(" ", "_");
+// On the search page the bar's field keeps the words being searched for.
+const query = path === "/search" ? (Astro.url.searchParams.get("q") ?? "").slice(0, 120) : "";
 ---
 
 <!doctype html>
@@ -28,35 +34,52 @@ const brand = SITE_NAME.toUpperCase().replaceAll(" ", "_");
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="preload" href="/fonts/switzer-400.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/switzer-300.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/switzer-500.woff2" as="font" type="font/woff2" crossorigin />
     <script is:inline>
-      if (!matchMedia("(prefers-reduced-motion: reduce)").matches) document.documentElement.classList.add("fx");
+      // Motion classes, set before the first paint. .fx turns the effects on, unless the
+      // visitor asked for reduced motion. .calm marks every page after the first one of a
+      // browser session: it arrives with a quick fade instead of the full sequence (fx.ts).
+      (function (html) {
+        if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+        html.classList.add("fx");
+        try {
+          if (sessionStorage.getItem("ct-arrived")) html.classList.add("calm");
+          else sessionStorage.setItem("ct-arrived", "1");
+        } catch (e) {
+          html.classList.add("calm"); // storage blocked: the quieter choice
+        }
+      })(document.documentElement);
+      // A portrait whose file is missing upstream shows its empty frame, not a broken-image
+      // icon. Listening this early catches images that fail before the page scripts run.
+      ["error", "load"].forEach(function (type) {
+        document.addEventListener(
+          type,
+          function (e) {
+            if (e.target && e.target.tagName === "IMG") e.target.classList.toggle("img-missing", type === "error");
+          },
+          true,
+        );
+      });
     </script>
   </head>
   <body>
+    <a class="skip" href="#main">Skip to content</a>
     <header class="site-bar">
-      <a class="brand" href="/"><span class="sq" aria-hidden="true"></span>{brand}</a>
-      {
-        crumbs.length > 0 && (
-          <p class="crumbs label">
-            {crumbs.map((c, i) => (
-              <>
-                {i > 0 && <span class="sep">/</span>}
-                <span class={i === crumbs.length - 1 ? "here" : undefined}>{c}</span>
-              </>
-            ))}
-          </p>
-        )
-      }
+      <a class="brand" href="/"><span class="sq" aria-hidden="true"></span>{SITE_NAME}</a>
 
       <nav id="site-nav" class="nav" aria-label="Main">
         <ul>
           <li class="nav-topics">
-            <a href="/topics" aria-current={current("/topics")}>Topics<span class="caret" aria-hidden="true">▾</span></a>
+            <a href="/topics" aria-current={current("/topics")}>Topics</a>
+            {/* Opens the menu from the keyboard (and on touch screens, which can't hover). */}
+            <button class="topics-open" type="button" aria-expanded="false" aria-controls="topics-menu" hidden>
+              <span class="caret" aria-hidden="true">▾</span><span class="visually-hidden">Show the topics menu</span>
+            </button>
             {
               topics && topics.length > 0 && (
-                <div class="mega">
+                <div class="mega" id="topics-menu">
                   <div class="mega-inner">
-                    <p class="label mega-title">Directories // Policy areas</p>
+                    <p class="note mega-title">Bills by policy area. Point at one, or move to it with Tab, to see its subtopics.</p>
                     <ul class="mega-areas">
                       {topics.map((t, i) => (
                         <li class={i === 0 ? "first" : undefined}>
@@ -73,13 +96,14 @@ const brand = SITE_NAME.toUpperCase().replaceAll(" ", "_");
                                 </li>
                               ))}
                             </ul>
-                            <a class="mega-all label" href={`/topics/${t.slug}`}>
-                              Open directory →
+                            <a class="mega-all" href={`/topics/${t.slug}`}>
+                              All {t.area} bills →
                             </a>
                           </div>
                         </li>
                       ))}
                     </ul>
+                    <a class="mega-every" href="/topics">See all topics →</a>
                   </div>
                 </div>
               )
@@ -89,49 +113,259 @@ const brand = SITE_NAME.toUpperCase().replaceAll(" ", "_");
           <li><a href="/members" aria-current={current("/members")}>Members</a></li>
           <li><a href="/find" aria-current={current("/find")}>Find my rep</a></li>
           <li><a href="/analytics" aria-current={current("/analytics")}>Analytics</a></li>
-          <li class="only-mobile"><a href="/search">Search</a></li>
-          <li class="only-mobile"><a href="/about">About the data</a></li>
+          <li class="only-mobile"><a href="/about" aria-current={current("/about")}>About the data</a></li>
         </ul>
       </nav>
 
-      <div class="status label">
-        <span class="hide-sm">Congress: <b>{CONGRESS}</b></span>
-        <span class="sync"><i class="dot ok" aria-hidden="true"></i>Synced <b>{ago(synced)}</b></span>
-        <a class="search-link" href="/search" aria-current={current("/search")}>⌕ Search</a>
+      <!-- Search, on every page: a field in the bar on wide screens; on phones the magnifier
+           button opens it as a full-width row under the bar (without JavaScript it links to
+           /search). Pressing "/" anywhere focuses it. -->
+      <form class="bar-search" id="bar-search" action="/search" role="search">
+        <label class="visually-hidden" for="bar-q">Search bills, members, and topics</label>
+        <svg class="mag" viewBox="0 0 16 16" aria-hidden="true"><circle cx="6.8" cy="6.8" r="5" /><path d="M10.6 10.6 15 15" /></svg>
+        <input id="bar-q" name="q" type="search" value={query} placeholder="Search bills, members, topics" autocomplete="off" enterkeyhint="search" />
+        <kbd class="slash" title="Press / to search" aria-hidden="true">/</kbd>
+        <button class="btn bar-go" type="submit">Search</button>
+      </form>
+
+      <div class="status">
+        <span class="sync" title="When this site last checked Congress for new records (it checks every hour)"><i class="dot ok" aria-hidden="true"></i>Updated <b>{ago(synced)}</b></span>
       </div>
+      <a class="search-toggle" href="/search" aria-controls="bar-search" aria-expanded="false">
+        <svg class="mag" viewBox="0 0 16 16" aria-hidden="true"><circle cx="6.8" cy="6.8" r="5" /><path d="M10.6 10.6 15 15" /></svg>
+        <span class="visually-hidden">Search</span>
+      </a>
       <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">
         <span class="visually-hidden">Menu</span>
         <span class="bars" aria-hidden="true"><i></i><i></i></span>
       </button>
     </header>
 
-    <main>
+    <main id="main">
+      {
+        crumbs.length > 0 && (
+          <nav class="trail" aria-label="Breadcrumb">
+            <ol>
+              <li><a href="/">Home</a></li>
+              {crumbs.map((c, i) => (
+                <li>{c.href && i < crumbs.length - 1 ? <a href={c.href}>{c.label}</a> : <span aria-current={i === crumbs.length - 1 ? "page" : undefined}>{c.label}</span>}</li>
+              ))}
+            </ol>
+          </nav>
+        )
+      }
       <slot />
     </main>
+    <script is:inline>
+      // Also before the first paint: number the panels for the arrival stagger, and show only
+      // the open pane of each tab box (the #hash's pane, else the selected tab's), so the page
+      // doesn't jump when fx.ts wires up the tabs a moment later.
+      (function () {
+        document.querySelectorAll(".panel").forEach(function (panel, i) {
+          panel.style.setProperty("--i", String(Math.min(i, 6)));
+        });
+        var target = null;
+        try {
+          target = location.hash.length > 1 ? document.getElementById(decodeURIComponent(location.hash.slice(1))) : null;
+        } catch (e) {}
+        document.querySelectorAll("[data-tabs]").forEach(function (box) {
+          var tabs = [].filter.call(box.querySelectorAll("a.tab-link"), function (t) {
+            return t.closest("[data-tabs]") === box;
+          });
+          var panes = tabs.map(function (t) {
+            return document.getElementById(decodeURIComponent(t.hash.slice(1)));
+          });
+          if (!tabs.length || panes.indexOf(null) >= 0) return;
+          var open = panes.findIndex(function (p) {
+            return target && p.contains(target);
+          });
+          if (open < 0)
+            open = Math.max(
+              0,
+              tabs.findIndex(function (t) {
+                return t.getAttribute("aria-selected") === "true";
+              }),
+            );
+          panes.forEach(function (p, k) {
+            p.hidden = k !== open;
+          });
+          box.classList.add("tabs-on");
+        });
+      })();
+    </script>
 
-    <footer class="site-foot label">
+    <footer class="site-foot">
+      <nav class="foot-nav" aria-label="Site">
+        <a href="/">Home</a>
+        <a href="/topics">Topics</a>
+        <a href="/votes">Votes</a>
+        <a href="/members">Members</a>
+        <a href="/find">Find my rep</a>
+        <a href="/analytics">Analytics</a>
+        <a href="/search">Search</a>
+        <a href="/about">About the data</a>
+      </nav>
       <span>Built on public data: Congress.gov · GovInfo · House Clerk · Voteview · Federal Register</span>
-      <span><a href="/about">About the data</a> · Not affiliated with Congress</span>
-      <span class="faint">{CONGRESS}th Congress · {new Date().getFullYear()}</span>
+      <span>Free and nonpartisan · Not affiliated with Congress · {CONGRESS}th Congress · {new Date().getFullYear()}</span>
     </footer>
 
     <script>
-      import { boot, interceptLinks } from "../scripts/fx";
+      import { boot, initClamp, initTabs, interceptLinks } from "../scripts/fx";
 
       boot();
       interceptLinks();
+      initClamp();
+      initTabs();
 
+      // Topics menu. Pointing at "Topics" opens it (CSS). The ▾ button beside it opens it from
+      // the keyboard, and on touch screens, which can't point, the first tap on "Topics" opens
+      // it (a second tap follows the link). Escape, a click elsewhere, or moving the keyboard
+      // focus out of it closes it again.
+      const topicsItem = document.querySelector<HTMLLIElement>(".nav-topics");
+      const topicsButton = document.querySelector<HTMLButtonElement>(".topics-open");
+      const topicsLink = topicsItem?.querySelector<HTMLAnchorElement>(":scope > a");
+      if (topicsItem && topicsButton && document.getElementById("topics-menu")) {
+        topicsItem.classList.add("menu-js");
+        topicsButton.hidden = false;
+        const setTopics = (open: boolean) => {
+          topicsItem.classList.toggle("open", open);
+          topicsButton.setAttribute("aria-expanded", String(open));
+        };
+        topicsButton.addEventListener("click", () => setTopics(!topicsItem.classList.contains("open")));
+        let touched = false;
+        topicsLink?.addEventListener("pointerdown", (event) => (touched = event.pointerType !== "mouse"));
+        topicsLink?.addEventListener("click", (event) => {
+          if (!touched || topicsItem.classList.contains("open") || getComputedStyle(topicsButton).display === "none") return;
+          event.preventDefault();
+          setTopics(true);
+        });
+        topicsItem.addEventListener("keydown", (event) => {
+          if (event.key !== "Escape" || !topicsItem.classList.contains("open")) return;
+          setTopics(false);
+          topicsButton.focus();
+        });
+        topicsItem.addEventListener("focusout", (event) => {
+          if (!topicsItem.contains(event.relatedTarget as Node | null)) setTopics(false);
+        });
+        document.addEventListener("click", (event) => {
+          if (!topicsItem.contains(event.target as Node)) setTopics(false);
+        });
+      }
+
+      // Inside the menu: when one policy area is already showing its subtopics, wait a moment
+      // before switching, so moving the pointer across to the subtopic list doesn't flip it.
+      const areas = [...document.querySelectorAll<HTMLLIElement>(".mega-areas > li")];
+      let pending = 0;
+      const pick = (li: HTMLLIElement) => areas.forEach((a) => a.classList.toggle("on", a === li));
+      areas[0]?.parentElement?.classList.add("js");
+      if (areas[0]) pick(areas[0]);
+      for (const li of areas) {
+        li.addEventListener("mouseenter", () => {
+          window.clearTimeout(pending);
+          pending = window.setTimeout(() => pick(li), 130);
+        });
+        li.addEventListener("mouseleave", () => window.clearTimeout(pending));
+        li.addEventListener("focusin", () => pick(li));
+      }
+
+      // Phone menu and phone search row: opening one closes the other.
       const toggle = document.querySelector<HTMLButtonElement>(".menu-toggle");
+      const searchToggle = document.querySelector<HTMLAnchorElement>(".search-toggle");
+      const searchField = document.querySelector<HTMLInputElement>("#bar-q");
+      const setMenu = (open: boolean) => {
+        toggle?.setAttribute("aria-expanded", String(open));
+        document.body.classList.toggle("menu-open", open);
+      };
+      const setSearch = (open: boolean) => {
+        searchToggle?.setAttribute("aria-expanded", String(open));
+        document.body.classList.toggle("search-open", open);
+        if (open) {
+          setMenu(false);
+          searchField?.focus();
+        }
+      };
       toggle?.addEventListener("click", () => {
         const open = toggle.getAttribute("aria-expanded") !== "true";
-        toggle.setAttribute("aria-expanded", String(open));
-        document.body.classList.toggle("menu-open", open);
+        setMenu(open);
+        if (open) setSearch(false);
+      });
+      searchToggle?.setAttribute("role", "button");
+      searchToggle?.addEventListener("click", (event) => {
+        event.preventDefault();
+        setSearch(!document.body.classList.contains("search-open"));
+      });
+
+      // Explained terms (components/Term.astro): a tap or click pins the explanation open, since
+      // touch screens can't hover; a tap elsewhere or Escape closes it. Each time one shows, it
+      // is nudged sideways (or flipped above its word) to stay on screen.
+      const placeTip = (term: Element) => {
+        const tip = term.querySelector<HTMLElement>(".term-tip");
+        if (!tip) return;
+        requestAnimationFrame(() => {
+          tip.style.setProperty("--dx", "0px");
+          term.classList.remove("up");
+          const box = tip.getBoundingClientRect();
+          if (!box.width) return;
+          const dx = box.right > window.innerWidth - 12 ? window.innerWidth - 12 - box.right : box.left < 12 ? 12 - box.left : 0;
+          tip.style.setProperty("--dx", `${Math.round(dx)}px`);
+          if (box.bottom > window.innerHeight - 8 && box.top - box.height > 80) term.classList.add("up");
+        });
+      };
+      const closeTerms = (except?: Element | null) =>
+        document.querySelectorAll(".term.open").forEach((t) => {
+          if (t === except) return;
+          t.classList.remove("open");
+          t.querySelector(".term-btn")?.setAttribute("aria-expanded", "false");
+        });
+      document.addEventListener("click", (event) => {
+        const button = (event.target as Element).closest?.(".term-btn");
+        const term = button?.parentElement ?? null;
+        closeTerms(term);
+        if (!button || !term) return;
+        const open = term.classList.toggle("open");
+        button.setAttribute("aria-expanded", String(open));
+        if (open) placeTip(term);
+      });
+      for (const type of ["pointerover", "focusin"]) {
+        document.addEventListener(type, (event) => {
+          const term = (event.target as Element).closest?.(".term");
+          if (term && !term.contains((event as FocusEvent | PointerEvent).relatedTarget as Node | null)) placeTip(term);
+        });
+      }
+
+      // "/" focuses the search field from anywhere on the page (except while typing); Escape leaves it.
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "/" && !event.metaKey && !event.ctrlKey && !event.altKey) {
+          if ((event.target as Element).closest?.("input, textarea, select, [contenteditable]")) return;
+          event.preventDefault();
+          if (searchToggle && getComputedStyle(searchToggle).display !== "none") setSearch(true);
+          searchField?.focus();
+          searchField?.select();
+        } else if (event.key === "Escape" && document.activeElement === searchField) {
+          searchField?.blur();
+          setSearch(false);
+        } else if (event.key === "Escape") {
+          closeTerms();
+        }
       });
     </script>
   </body>
 </html>
 
 <style>
+  .skip {
+    position: fixed;
+    left: var(--gap);
+    top: -60px;
+    z-index: 80;
+    padding: 10px 14px;
+    background: var(--bright);
+    color: #050505;
+    font: 500 var(--fs-sm) var(--font);
+  }
+  .skip:focus {
+    top: 8px;
+  }
   .site-bar {
     position: fixed;
     inset: 0 0 auto;
@@ -140,17 +374,30 @@ const brand = SITE_NAME.toUpperCase().replaceAll(" ", "_");
     align-items: center;
     gap: 22px;
     height: var(--bar);
-    padding: 0 var(--gap);
+    /* The bar spans the window, but its contents line up with the page's width cap. */
+    padding: 0 max(var(--gap), calc((100% - var(--maxw)) / 2 + var(--gap)));
+    border-bottom: 1px solid var(--line);
+  }
+  /* The frosted backdrop lives on a layer behind the bar: a backdrop-filter on the bar
+     itself would make it the frame for its fixed children (the Topics menu and the phone
+     menu), squeezing them into the bar's 46px. */
+  .site-bar::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
     background: rgb(5 5 5 / 92%);
     backdrop-filter: blur(10px);
-    border-bottom: 1px solid var(--line);
   }
   .brand {
     display: flex;
     align-items: center;
     gap: 10px;
-    font: 500 0.72rem/1 var(--mono);
-    letter-spacing: 0.16em;
+    padding-right: 22px;
+    border-right: 1px solid var(--line-2);
+    font: 500 0.8rem/1 var(--mono);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
     color: var(--bright);
     white-space: nowrap;
   }
@@ -159,56 +406,86 @@ const brand = SITE_NAME.toUpperCase().replaceAll(" ", "_");
     height: 8px;
     background: var(--bright);
   }
-  .crumbs {
-    display: flex;
-    gap: 8px;
-    margin: 0;
-    padding-left: 22px;
-    border-left: 1px solid var(--line-2);
-    white-space: nowrap;
-    overflow: hidden;
-  }
-  .crumbs .here {
-    color: var(--bright);
-  }
-  .crumbs .sep {
-    color: var(--faint);
-  }
   .nav {
-    flex: 1;
+    flex: 0 0 auto;
+    align-self: stretch;
   }
-  .nav ul {
+  .nav > ul {
     display: flex;
-    gap: 4px;
+    height: 100%;
     list-style: none;
     margin: 0;
     padding: 0;
   }
+  .nav > ul > li {
+    display: flex;
+  }
+  /* Each nav link fills the bar's height, so the pointer can't fall into a gap between the
+     link and the Topics menu below it. */
   .nav > ul > li > a {
+    position: relative;
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 8px 10px;
-    font: 400 0.7rem/1 var(--mono);
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--muted);
-    transition: color 120ms ease;
+    padding: 0 14px;
+    font: 400 0.94rem/1 var(--font);
+    white-space: nowrap;
+    color: var(--soft);
+    transition:
+      color 120ms ease,
+      background 120ms ease;
   }
   .nav > ul > li > a:hover,
+  .nav-topics:hover > a,
+  .nav-topics.open > a {
+    color: var(--bright);
+    background: var(--raise);
+  }
   .nav > ul > li > a[aria-current="page"] {
     color: var(--bright);
   }
-  .nav > ul > li > a[aria-current="page"]::before {
-    content: "[";
-    margin-right: 2px;
-  }
   .nav > ul > li > a[aria-current="page"]::after {
-    content: "]";
-    margin-left: 2px;
+    content: "";
+    position: absolute;
+    left: 14px;
+    right: 14px;
+    bottom: -1px;
+    height: 2px;
+    background: var(--bright);
   }
   .caret {
-    font-size: 0.6rem;
+    font-size: 0.7rem;
+    color: var(--muted);
+  }
+  /* The ▾ beside "Topics" is its own button (it opens the menu from the keyboard and on touch
+     screens), sharing the link's hover so the two read as one item. */
+  .nav-topics.menu-js > a {
+    padding-right: 2px;
+  }
+  .topics-open {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 12px 0 4px;
+    border: 0;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+    transition: background 120ms ease;
+  }
+  .topics-open[hidden] {
+    display: none;
+  }
+  .nav-topics:hover > .topics-open,
+  .nav-topics.open > .topics-open {
+    background: var(--raise);
+  }
+  .topics-open:hover .caret,
+  .nav-topics.open .caret {
+    color: var(--bright);
+  }
+  .nav-topics.open .caret {
+    display: inline-block;
+    transform: rotate(180deg);
   }
   .status {
     display: flex;
@@ -216,75 +493,193 @@ const brand = SITE_NAME.toUpperCase().replaceAll(" ", "_");
     gap: 18px;
     white-space: nowrap;
   }
+  .status {
+    font: 400 var(--fs-sm)/1.2 var(--font);
+    color: var(--muted);
+  }
   .status b {
     font-weight: 400;
-    color: var(--bright);
+    color: var(--text);
   }
   .sync {
     display: inline-flex;
     align-items: center;
     gap: 8px;
   }
-  .search-link {
-    padding-left: 18px;
-    border-left: 1px solid var(--line-2);
-    color: var(--bright);
+  /* The search field sits in the middle of the bar, in the space between the links and the
+     update time. */
+  .bar-search {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 200px;
+    min-width: 0;
+    max-width: 460px;
+    margin: 0 auto;
   }
-  .only-mobile {
+  .mag {
+    width: 15px;
+    height: 15px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+  }
+  .bar-search .mag {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    margin-top: -7.5px;
+    color: var(--muted);
+    pointer-events: none;
+  }
+  .bar-search input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 34px;
+    padding: 0 40px 0 36px;
+    font-size: 0.94rem;
+    background: var(--panel);
+    border-color: var(--line-2);
+    transition:
+      border-color 120ms ease,
+      background 120ms ease;
+  }
+  .bar-search input:hover {
+    border-color: var(--faint);
+  }
+  .bar-search input:focus {
+    outline: none;
+    border-color: var(--bright);
+    background: var(--bg);
+  }
+  .bar-search input::placeholder {
+    color: var(--muted);
+  }
+  .slash {
+    position: absolute;
+    right: 9px;
+    top: 50%;
+    min-width: 20px;
+    margin-top: -10px;
+    padding: 2px 5px;
+    border: 1px solid var(--line-2);
+    font: 400 var(--fs-xs)/14px var(--mono);
+    text-align: center;
+    color: var(--muted);
+    pointer-events: none;
+  }
+  .bar-search input:focus ~ .slash,
+  .bar-search input:not(:placeholder-shown) ~ .slash {
     display: none;
   }
+  /* Enter submits on wide screens; the button shows only in the phone search row. */
+  .bar-go {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .search-toggle {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    margin-right: -6px;
+    color: var(--bright);
+  }
+  .search-toggle .mag {
+    width: 19px;
+    height: 19px;
+  }
+  .search-toggle[aria-expanded="true"] {
+    background: var(--raise);
+  }
+  .only-mobile {
+    display: none !important;
+  }
 
-  /* Topics: a full-width panel; hover a policy area to see its subtopics on the right. */
+  /* Topics: a full-width panel; point at a policy area to see its subtopics on the right.
+     It opens after a short pause (so sweeping across the bar doesn't flash it) and stays a
+     moment after the pointer leaves (so a slightly wide path down to it doesn't close it). */
   .mega {
     position: fixed;
     top: var(--bar);
     left: 0;
     right: 0;
-    display: none;
-    background: rgb(7 7 7 / 98%);
+    visibility: hidden;
+    clip-path: inset(0 0 100% 0);
+    background: #070707;
     border-bottom: 1px solid var(--line-2);
+    box-shadow: 0 24px 48px rgb(0 0 0 / 60%);
+    transition:
+      clip-path 220ms var(--ease) 140ms,
+      visibility 0s linear 360ms;
   }
   .nav-topics:hover .mega,
-  .nav-topics:focus-within .mega {
-    display: block;
+  .nav-topics:not(.menu-js):focus-within .mega,
+  .nav-topics.open .mega {
+    visibility: visible;
+    clip-path: inset(0 0 -60px 0);
+    transition:
+      clip-path 280ms var(--ease) 70ms,
+      visibility 0s linear 70ms;
   }
-  :global(.fx) .mega {
-    animation: unfold 260ms var(--ease) both;
+  @media (prefers-reduced-motion: reduce) {
+    .mega,
+    .nav-topics:hover .mega,
+    .nav-topics:not(.menu-js):focus-within .mega,
+    .nav-topics.open .mega {
+      transition-duration: 0s;
+    }
   }
   .mega-inner {
     position: relative;
-    max-width: 1680px;
+    max-width: var(--maxw);
     margin: 0 auto;
-    padding: 22px var(--gap) 26px;
+    padding: 22px var(--gap) 22px;
   }
   .mega-title {
     margin-bottom: 14px;
   }
+  /* Three columns that fill top to bottom, each at its own pace, so a name that wraps to
+     two lines doesn't stretch the rows of the other columns. */
   .mega-areas {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    columns: 3;
     column-gap: 22px;
     width: 68%;
     list-style: none;
     margin: 0;
     padding: 0;
   }
+  .mega-areas > li {
+    break-inside: avoid;
+  }
   .mega-areas > li > a {
     display: flex;
     justify-content: space-between;
+    align-items: center;
     gap: 10px;
-    padding: 8px 0;
+    min-height: 40px;
+    padding: 8px 10px;
     border-bottom: 1px solid var(--line);
-    font-size: 0.86rem;
+    font-size: 0.9rem;
     color: #bdbdbd;
   }
   .count {
-    font: 0.68rem var(--mono);
+    font: var(--fs-xs) var(--mono);
     color: var(--faint);
   }
-  .mega-areas > li:hover > a,
+  .mega-areas:not(.js) > li:hover > a,
+  .mega-areas > li.on > a,
   .mega-areas > li:focus-within > a {
     color: var(--bright);
+    background: var(--raise);
     border-bottom-color: var(--muted);
   }
   .mega-subs {
@@ -292,40 +687,50 @@ const brand = SITE_NAME.toUpperCase().replaceAll(" ", "_");
     position: absolute;
     top: 22px;
     right: var(--gap);
-    bottom: 26px;
+    bottom: 22px;
     width: calc(32% - 2 * var(--gap));
     padding-left: 24px;
     border-left: 1px solid var(--line-2);
   }
-  .mega-areas > li:hover > .mega-subs,
-  .mega-areas > li:focus-within > .mega-subs,
-  .mega-areas:not(:hover) > li.first > .mega-subs {
+  .mega-areas:not(.js) > li:hover > .mega-subs,
+  .mega-areas:not(.js):not(:hover) > li.first > .mega-subs,
+  .mega-areas.js > li.on > .mega-subs {
     display: block;
   }
   .mega-subs ul {
     list-style: none;
-    margin: 12px 0 16px;
+    margin: 10px 0 14px;
     padding: 0;
   }
-  .mega-subs li {
-    padding: 5px 0;
-    font-size: 0.88rem;
+  .mega-subs li a {
+    display: block;
+    padding: 6px 0;
+    font-size: 0.9rem;
     color: #bdbdbd;
   }
-  .mega-subs li a::before {
-    content: "> ";
-    font-family: var(--mono);
-    color: var(--faint);
-  }
-  .mega-all {
+  .mega-subs li a:hover {
     color: var(--bright);
+  }
+  .mega-all,
+  .mega-every {
+    display: inline-block;
+    padding: 6px 0;
+    font: 500 var(--fs-sm) var(--font);
+    color: var(--bright);
+  }
+  .mega-all:hover,
+  .mega-every:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .mega-every {
+    margin-top: 14px;
   }
 
   .menu-toggle {
     display: none;
-    margin-left: auto;
-    padding: 10px;
-    margin-right: -10px;
+    padding: 12px;
+    margin-right: -12px;
     background: none;
     border: 0;
     color: var(--bright);
@@ -349,52 +754,126 @@ const brand = SITE_NAME.toUpperCase().replaceAll(" ", "_");
   }
 
   @media (max-width: 1180px) {
-    .crumbs,
-    .hide-sm {
+    .sync {
       display: none;
+    }
+    .nav > ul > li > a {
+      padding: 0 10px;
     }
   }
   @media (max-width: 900px) {
+    .site-bar {
+      gap: 12px;
+    }
+    .brand {
+      border-right: 0;
+    }
     .menu-toggle {
       display: block;
     }
     .status {
       margin-left: auto;
     }
-    .search-link {
+    .sync {
+      display: inline-flex;
+    }
+    /* Phones: the magnifier opens the field as a full-width row under the bar. */
+    .search-toggle {
+      display: inline-flex;
+    }
+    .bar-search {
       display: none;
+      position: fixed;
+      top: var(--bar);
+      left: 0;
+      right: 0;
+      max-width: none;
+      margin: 0;
+      padding: 12px var(--gap);
+      background: var(--bg);
+      border-bottom: 1px solid var(--line-2);
+      box-shadow: 0 18px 36px rgb(0 0 0 / 65%);
+    }
+    :global(body.search-open) .bar-search {
+      display: flex;
+    }
+    .bar-search .mag {
+      left: calc(var(--gap) + 13px);
+    }
+    .bar-search input {
+      height: 46px;
+      padding-right: 12px;
+      font-size: 1rem;
+    }
+    .slash {
+      display: none;
+    }
+    .bar-go {
+      position: static;
+      width: auto;
+      height: 46px;
+      padding: 0 16px;
+      clip: auto;
     }
     .nav {
       display: none;
       position: fixed;
       inset: var(--bar) 0 0;
+      overflow-y: auto;
       background: var(--bg);
-      padding: 18px var(--gap);
+      padding: 14px var(--gap) 32px;
     }
     :global(body.menu-open) .nav {
       display: block;
     }
-    .nav ul {
+    .nav > ul {
       flex-direction: column;
-      gap: 0;
+      height: auto;
     }
     .nav > ul > li > a {
       width: 100%;
       padding: 16px 0;
-      font: 400 1.9rem/1.1 var(--font);
+      font: 400 1.7rem/1.1 var(--font);
       letter-spacing: -0.03em;
       text-transform: none;
       color: var(--bright);
       border-bottom: 1px solid var(--line);
     }
-    .nav > ul > li > a[aria-current="page"]::before,
-    .nav > ul > li > a[aria-current="page"]::after,
+    .nav > ul > li > a:hover {
+      background: none;
+    }
+    .nav > ul > li > a[aria-current="page"]::after {
+      left: auto;
+      right: 0;
+      top: 50%;
+      bottom: auto;
+      width: 8px;
+      height: 8px;
+      margin-top: -4px;
+    }
     .caret,
+    .topics-open,
     .mega {
       display: none !important;
     }
     .only-mobile {
-      display: block;
+      display: block !important;
+    }
+    /* The phone menu and search row drop in quickly as they open. */
+    :global(.fx body.menu-open) .nav,
+    :global(.fx body.search-open) .bar-search {
+      animation: drop-in 180ms var(--ease);
+    }
+  }
+  @keyframes drop-in {
+    from {
+      opacity: 0;
+      transform: translateY(-8px);
+    }
+  }
+  @media (max-width: 420px) {
+    .sync {
+      display: none;
     }
   }
 
@@ -403,12 +882,27 @@ const brand = SITE_NAME.toUpperCase().replaceAll(" ", "_");
     flex-wrap: wrap;
     justify-content: space-between;
     gap: 10px 24px;
-    max-width: 1680px;
+    font: 400 var(--fs-sm)/1.5 var(--font);
+    color: var(--muted);
+    max-width: var(--maxw);
     margin: 0 auto;
     padding: 18px var(--gap) 28px;
     border-top: 1px solid var(--line);
   }
-  .site-foot a {
+  .foot-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 20px;
+    width: 100%;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  .foot-nav a {
+    padding: 6px 0;
+    font-size: 0.94rem;
+    color: var(--text);
+  }
+  .foot-nav a:hover {
     color: var(--bright);
   }
 </style>

@@ -1,5 +1,6 @@
 ---
-// A log that types itself out, one line after another, ending on a blinking cursor.
+// A log that types itself out, one line after another, ending on a blinking cursor. It types
+// only on the first page of a visit; later pages (html.calm) show it straight away.
 export interface Line {
   text: string;
   tone?: "dim" | "bright" | "ok" | "alert";
@@ -9,7 +10,7 @@ interface Props {
   lines: Line[];
   delay?: number; // ms before the first line
 }
-const { lines, delay = 350 } = Astro.props;
+const { lines, delay = 300 } = Astro.props;
 ---
 
 <ol class="term" style={`--d:${delay}ms`}>
@@ -30,16 +31,17 @@ const { lines, delay = 350 } = Astro.props;
     list-style: none;
     margin: 0;
     padding: var(--pad);
-    font: 400 0.7rem/1.75 var(--mono);
-    letter-spacing: 0.04em;
+    font: 400 0.8rem/1.6 var(--mono);
     color: var(--faint);
   }
+  li + li {
+    margin-top: 4px;
+  }
+  /* Lines wrap rather than being cut off; the typing reveal is a stepped wipe, so a
+     wrapped line types out without reflowing. */
   li span {
     display: inline-block;
     max-width: 100%;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
     vertical-align: bottom;
   }
   .bright {
@@ -55,12 +57,18 @@ const { lines, delay = 350 } = Astro.props;
     text-decoration: underline;
   }
   :global(.fx) li span {
-    animation: type 380ms steps(var(--len)) both;
-    animation-delay: calc(var(--d) + var(--k) * 230ms);
+    animation: type 260ms steps(var(--len)) both;
+    animation-delay: calc(var(--d) + var(--k) * 120ms);
+  }
+  :global(.fx.calm) li span {
+    animation: none;
   }
   @keyframes type {
     from {
-      max-width: 0;
+      clip-path: inset(0 100% 0 0);
+    }
+    to {
+      clip-path: inset(0 0 0 0);
     }
   }
   @media (prefers-reduced-motion: reduce) {

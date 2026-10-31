@@ -1,6 +1,6 @@
 ---
 // A segmented meter: a row of cells, lit in proportion to value / max. Cells light up one
-// after another when the page arrives.
+// after another, left to right, when the page arrives (one sweep, whatever the cell count).
 interface Props {
   value: number;
   max: number;
@@ -71,8 +71,8 @@ const partial = exact - lit > 0.25 && lit < cells;
   }
   :global(.fx) i.on,
   :global(.fx) i.part {
-    animation: cell 160ms ease both;
-    animation-delay: calc(260ms + var(--k) * 26ms);
+    animation: cell calc(140ms * var(--fx-pace)) ease both;
+    animation-delay: calc(var(--fx-start) + var(--k) / var(--n) * 460ms * var(--fx-pace));
   }
   @keyframes cell {
     from {

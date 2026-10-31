@@ -25,6 +25,7 @@ if (billType === "hres" || billType === "sres") {
     { became_law: 5, presented: 4, vetoed: 4, passed_both: 3, passed_house: 2, passed_senate: 2, reported: 1 }[status] ?? 0;
 }
 const stopped = status === "vetoed" || status === "failed";
+const stepLabel = (label: string, i: number) => (i === reached && status === "vetoed" ? "Vetoed" : i === reached && status === "failed" ? `${label} · failed` : label);
 ---
 
 <ol class="pipeline" aria-label="Progress" style={`--n:${steps.length}`}>
@@ -41,12 +42,14 @@ const stopped = status === "vetoed" || status === "failed";
       >
         <span class="node" />
         <span class="label">
-          {String(i + 1).padStart(2, "0")} {i === reached && status === "vetoed" ? "Vetoed" : i === reached && status === "failed" ? `${label} · failed` : label}
+          {String(i + 1).padStart(2, "0")} {stepLabel(label, i)}
         </span>
       </li>
     ))
   }
 </ol>
+{/* Phones keep the row of steps but name only the current one, below it. */}
+<p class="label pipe-now" aria-hidden="true">Step {reached + 1} of {steps.length} · <span>{stepLabel(steps[reached], reached)}</span></p>
 
 <style>
   .pipeline {
@@ -111,8 +114,8 @@ const stopped = status === "vetoed" || status === "failed";
     color: var(--bright);
   }
   :global(.fx) li.done .node {
-    animation: node-on 200ms ease both;
-    animation-delay: calc(350ms + var(--k) * 110ms);
+    animation: node-on calc(200ms * var(--fx-pace)) ease both;
+    animation-delay: calc(var(--fx-start) + var(--k) * 80ms * var(--fx-pace));
   }
   @keyframes node-on {
     from {
@@ -121,17 +124,24 @@ const stopped = status === "vetoed" || status === "failed";
       box-shadow: none;
     }
   }
+  .pipe-now {
+    display: none;
+  }
   @media (max-width: 640px) {
-    .pipeline {
-      grid-template-columns: 1fr;
-      gap: 10px;
+    li .label {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
     }
-    li {
-      flex-direction: row;
-      align-items: center;
+    .pipe-now {
+      display: block;
+      margin: 12px 0 0;
     }
-    li::before {
-      display: none;
+    .pipe-now span {
+      color: var(--bright);
     }
   }
 </style>

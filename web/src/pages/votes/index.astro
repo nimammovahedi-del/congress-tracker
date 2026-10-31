@@ -3,8 +3,8 @@ import Panel from "../../components/Panel.astro";
 import Terminal from "../../components/Terminal.astro";
 import Layout from "../../layouts/Layout.astro";
 import { rows, type RollCall } from "../../lib/db";
-import { billNumberFromId, consoleDate, CONGRESS } from "../../lib/format";
-import { CATEGORY_SQL, passed, VOTE_CATEGORIES } from "../../lib/votes";
+import { consoleDate, CONGRESS } from "../../lib/format";
+import { CATEGORY_SQL, passed, VOTE_CATEGORIES, voteRef } from "../../lib/votes";
 
 const PAGE_SIZE = 50;
 const params = Astro.url.searchParams;
@@ -53,8 +53,18 @@ const link = (changes: Record<string, string>) => {
   const s = next.toString();
   return `/votes${s ? `?${s}` : ""}`;
 };
-const measure = (r: RollCall) => (r.bill_id ? billNumberFromId(r.bill_id) : r.subject_ref?.startsWith("PN") ? r.subject_ref : `ROLL ${r.roll_number}`);
-const activeFilters = [chamber, result, session !== "all" ? `session ${session}` : "all", category, q ? `"${q}"` : "all"].filter((f) => f !== "all");
+const measure = voteRef;
+// Each Congress's first session is the odd year it starts (the 119th began in 2025).
+const sessionYear = (n: number) => 1789 + 2 * (CONGRESS - 1) + (n - 1);
+const categoryLabel = (key: string) => VOTE_CATEGORIES.find((c) => c.key === key)?.label ?? key;
+const TYPE_HELP: Record<string, string> = {
+  passage: "Final votes to pass a bill or resolution, or to accept the other chamber's version",
+  amendments: "Votes on changing a bill's text",
+  nominations: "Senate votes to confirm people the President nominated",
+  cloture: "Senate votes to end debate so a final vote can happen (usually needs 60)",
+  procedural: "Votes on how and when to debate: rules, motions to adjourn, table, or recommit",
+};
+const activeFilters = [chamber, result, session !== "all" ? String(sessionYear(Number(session))) : "all", category !== "all" ? categoryLabel(category) : "all", q ? `"${q}"` : "all"].filter((f) => f !== "all");
 const inspect = Object.fromEntries(
   records.map((r) => [
     r.id,
@@ -68,107 +78,102 @@ const inspect = Object.fromEntries(
       n: r.nay,
       nv: r.present + r.not_voting,
       d: consoleDate(r.vote_date),
-      c: r.chamber === "senate" ? "SENATE" : "HOUSE",
+      c: r.chamber === "senate" ? "Senate" : "House",
       rn: r.roll_number,
-      s: `${r.congress}-${r.session}`,
     },
   ]),
 );
 ---
 
-<Layout title="Vote directory" crumbs={["Votes", "Record queue"]}>
+<Layout title="Votes" crumbs={[{ label: "Votes" }]}>
   <div class="console">
-    <div class="cols cols-3">
-      <Panel label="Sys_nav">
-        <span slot="head" class="label">Link:ok <i class="dot ok"></i></span>
-        <div class="panel-body">
-          <p class="label">Active_context</p>
-          <p class="ctx">{CONGRESS}th Congress</p>
-          <div class="kv">
-            <div><span class="label">Sessions</span><div class="v">01–02</div></div>
-            <div><span class="label">Years</span><div class="v">2025–26</div></div>
-          </div>
-        </div>
-        <div class="panel-body">
-          <p class="label">Directories</p>
-          <ul class="dirs">
-            <li>
-              <a href={link({ category: "all" })} class={category === "all" ? "on" : undefined}>
-                <span>[ All_roll_calls ]</span><span>{allCount.toLocaleString("en-US")}</span>
-              </a>
-            </li>
-            {
-              VOTE_CATEGORIES.map((c) => (
-                <li>
-                  <a href={link({ category: c.key })} class={category === c.key ? "on" : undefined}>
-                    <span>[ {c.label} ]</span>
-                    <span>{(counts.find((x) => x.category === c.key)?.n ?? 0).toLocaleString("en-US")}</span>
-                  </a>
-                </li>
-              ))
-            }
-          </ul>
-        </div>
-      </Panel>
-
+    <div class="cols votes-grid">
       <Panel class="queue">
         <div class="panel-body queue-head">
-          <div>
-            <h1 class="title">Record Queue</h1>
-            <p class="label">Displaying {records.length} of {totalCount.toLocaleString("en-US")} records</p>
-          </div>
-          <span class="label sort">Sort: descending</span>
+          <h1 class="title">Every roll-call vote</h1>
+          <p class="sub">
+            A roll-call vote is one where each member's yes or no is recorded by name. {CONGRESS}th Congress · showing {records.length} of {totalCount.toLocaleString("en-US")}{totalCount === allCount ? "" : ` matching (${allCount.toLocaleString("en-US")} in all)`} · newest first
+          </p>
         </div>
         <div class="panel-body filters">
-          <form class="command" action="/votes">
-            <span class="prompt">&gt;</span>
+          <form class="command" action="/votes" role="search">
+            <span class="prompt" aria-hidden="true">&gt;</span>
             {chamber !== "all" && <input type="hidden" name="chamber" value={chamber} />}
             {result !== "all" && <input type="hidden" name="result" value={result} />}
             {session !== "all" && <input type="hidden" name="session" value={session} />}
             {category !== "all" && <input type="hidden" name="category" value={category} />}
-            <input type="search" name="q" value={q} placeholder="search --rc  (bill, nominee, or question)" aria-label="Search roll calls" />
+            <input type="search" name="q" value={q} placeholder="Bill, nominee, or words" aria-label="Search votes by bill number, nominee, or words from the title" />
+            <button class="btn ghost" type="submit">Search</button>
           </form>
+          <details class="filter-set" open data-filters>
+            <summary>Filters</summary>
           <div class="frow">
             <span class="label">Chamber</span>
             <div class="toggles">
-              {["all", "house", "senate"].map((c) => <a class:list={["toggle", chamber === c && "active"]} href={link({ chamber: c })}>{c}</a>)}
+              {["all", "house", "senate"].map((c) => <a class:list={["toggle", chamber === c && "active"]} aria-current={chamber === c ? "true" : undefined} href={link({ chamber: c })}>{c[0].toUpperCase() + c.slice(1)}</a>)}
             </div>
           </div>
           <div class="frow">
             <span class="label">Result</span>
             <div class="toggles">
-              {["all", "passed", "failed"].map((c) => <a class:list={["toggle", result === c && "active"]} href={link({ result: c })}>{c}</a>)}
+              {["all", "passed", "failed"].map((c) => <a class:list={["toggle", result === c && "active"]} aria-current={result === c ? "true" : undefined} href={link({ result: c })}>{c[0].toUpperCase() + c.slice(1)}</a>)}
             </div>
           </div>
           <div class="frow">
-            <span class="label">Session</span>
+            <span class="label">Type</span>
             <div class="toggles">
-              {["all", "1", "2"].map((c) => <a class:list={["toggle", session === c && "active"]} href={link({ session: c })}>{c === "all" ? "all" : `0${c}`}</a>)}
+              <a class:list={["toggle", category === "all" && "active"]} aria-current={category === "all" ? "true" : undefined} href={link({ category: "all" })}>All</a>
+              {
+                VOTE_CATEGORIES.map((c) => (
+                  <a class:list={["toggle", category === c.key && "active"]} aria-current={category === c.key ? "true" : undefined} href={link({ category: c.key })} title={TYPE_HELP[c.key]}>
+                    {c.label} <span class="cnt">{(counts.find((x) => x.category === c.key)?.n ?? 0).toLocaleString("en-US")}</span>
+                  </a>
+                ))
+              }
             </div>
           </div>
-          <div class="frow active-filters">
-            <span class="label">Active filters: <span class="v">{activeFilters.length ? activeFilters.join(" · ") : "none"}</span></span>
-            {activeFilters.length > 0 && <a class="label clear" href="/votes">Clear all</a>}
+          <p class="note type-help">
+            <b>Cloture</b> is a Senate vote to end debate (it usually needs 60). <b>Procedural</b> votes decide how and when to debate, such as motions to adjourn or to table.
+          </p>
+          <div class="frow">
+            <span class="label">Year</span>
+            <div class="toggles">
+              {["all", "1", "2"].map((c) => <a class:list={["toggle", session === c && "active"]} aria-current={session === c ? "true" : undefined} href={link({ session: c })}>{c === "all" ? "Both" : sessionYear(Number(c))}</a>)}
+            </div>
           </div>
+          </details>
+          {
+            activeFilters.length > 0 && (
+              <div class="frow active-filters">
+                <span class="label">Showing: <span class="v">{activeFilters.join(" · ")}</span></span>
+                <a class="toggle" href="/votes">Clear all filters ×</a>
+              </div>
+            )
+          }
         </div>
         {
           records.length ? (
-            <div class="table-scroll">
-              <table class="rtable">
+            <div>
+              <table class="rtable cards votes-table">
                 <thead>
-                  <tr><th>ID</th><th>Ch</th><th>Measure</th><th>Subject</th><th>Date</th><th>Status</th></tr>
+                  <tr><th>Date</th><th>Chamber</th><th>Bill or item</th><th>What it was about</th><th class="num">Result</th></tr>
                 </thead>
                 <tbody>
                   {records.map((r) => {
                     const ok = passed(r);
                     return (
                       <tr data-href={`/votes/${r.id}`} data-vote={r.id}>
-                        <td class="mono">{r.roll_number}</td>
-                        <td class="mono">{r.chamber === "senate" ? "S" : "H"}</td>
-                        <td><a class="tag" href={`/votes/${r.id}`}>{measure(r)}</a></td>
-                        <td class="subject">{r.bill_title ?? r.description ?? r.question}</td>
                         <td class="mono">{consoleDate(r.vote_date)}</td>
-                        <td><i class={`dot ${ok === true ? "ok" : ok === false ? "alert" : ""}`} title={r.result ?? ""} /></td>
+                        <td class="mono">{r.chamber === "senate" ? "Senate" : "House"} {r.roll_number}</td>
+                        <td><a class="tag" href={`/votes/${r.id}`}>{measure(r)}</a></td>
+                        <td class="subject">
+                          <span class="clamp-2">{r.bill_title ?? r.description ?? r.question}</span>
+                          {/* Which vote on it this was: a bill can have many in a row (amendments,
+                              cloture, passage), and without this they'd read as the same line. */}
+                          {(r.bill_title ?? r.description) && r.question && <span class="vote-q">{r.question}</span>}
+                          <span class="row-meta">{consoleDate(r.vote_date)} · {r.chamber === "senate" ? "Senate" : "House"} {r.roll_number}</span>
+                        </td>
+                        <td class="num"><span class={`status-tag ${ok === true ? "ok" : ok === false ? "alert" : "neutral"}`} title={r.result ?? ""}>{ok === true ? "Passed" : ok === false ? "Failed" : "Recorded"}</span></td>
                       </tr>
                     );
                   })}
@@ -176,48 +181,50 @@ const inspect = Object.fromEntries(
               </table>
             </div>
           ) : (
-            <p class="empty">No records match these filters</p>
+            <div class="empty">
+              <p>No votes match{q ? ` “${q}”` : ""}{activeFilters.length > (q ? 1 : 0) ? " with these filters" : ""}.</p>
+              <p>Try fewer words, a bill number such as “H.R. 1”, or a nominee's last name.</p>
+              <a class="toggle" href="/votes">Clear all filters</a>
+            </div>
           )
         }
         <p class="pager">
-          <span>Page {page} / {pages}</span>
+          <span>Page {page} of {pages}</span>
           <span class="toggles">
-            {page > 1 && <a class="toggle" href={link({ page: String(page - 1) })}>‹ Prev</a>}
-            {page < pages && <a class="toggle" href={link({ page: String(page + 1) })}>Next ›</a>}
+            {page > 1 && <a class="toggle" href={link({ page: String(page - 1) })}>‹ Newer</a>}
+            {page < pages && <a class="toggle" href={link({ page: String(page + 1) })}>Older ›</a>}
           </span>
         </p>
       </Panel>
 
-      <Panel label="Inspector" class="inspector-panel">
-        <span slot="head" class="tag" data-v="id">---</span>
+      <Panel label="Vote preview" class="inspector-panel">
         <div class="panel-body">
           <div class="insp-top">
-            <span class="tag big-tag" data-v="m">Awaiting target</span>
+            <span class="tag big-tag" data-v="m">No vote selected</span>
             <span class="status-tag neutral" data-v="res">---</span>
           </div>
-          <p class="insp-title" data-v="t">Hover a record to inspect it</p>
-          <p class="label" data-v="q">--</p>
+          <p class="insp-title" data-v="t">Point at a vote in the list, or Tab to it, to preview it here</p>
+          <p class="note" data-v="q">--</p>
         </div>
         <div class="panel-body">
           <div class="tally-box">
-            <p class="label center">Final_tally_analysis</p>
+            <p class="label center">Final count</p>
             <div class="tally-row">
-              <div><span class="tnum" data-v="y">--</span><span class="label">Yea</span></div>
-              <div><span class="tnum dimnum" data-v="n">--</span><span class="label">Nay</span></div>
+              <div><span class="tnum" data-v="y">--</span><span class="label">Yes</span></div>
+              <div><span class="tnum dimnum" data-v="n">--</span><span class="label">No</span></div>
             </div>
             <div class="hatch"><span data-v="bar"></span></div>
-            <p class="label center" data-v="margin">Margin: --</p>
+            <p class="label center" data-v="margin">--</p>
           </div>
           <div class="kv fields">
             <div><span class="label">Date</span><div class="v" data-v="d">--</div></div>
-            <div><span class="label">Session</span><div class="v" data-v="s">--</div></div>
             <div><span class="label">Chamber</span><div class="v" data-v="c">--</div></div>
-            <div><span class="label">Roll</span><div class="v" data-v="rn">--</div></div>
+            <div><span class="label">Vote number</span><div class="v" data-v="rn">--</div></div>
             <div><span class="label">Didn't vote</span><div class="v" data-v="nv">--</div></div>
           </div>
-          <a class="btn open" href="/votes" data-v="open" hidden>Open record ›</a>
+          <a class="btn open" href="/votes" data-v="open" hidden>Open this vote →</a>
         </div>
-        <Terminal lines={[{ text: "Establishing secure connection…" }, { text: "Indexing roll call records…" }, { text: "Awaiting record designation…" }, { text: "INSPECTOR_READY", tone: "ok" }]} delay={600} />
+        <Terminal lines={[{ text: `${totalCount.toLocaleString("en-US")} ${totalCount === 1 ? "vote" : "votes"} in this list, newest first` }, { text: "Point at a row to preview it here", tone: "bright" }, { text: "Click a row to open the full vote", tone: "ok" }]} delay={300} />
       </Panel>
     </div>
     <script type="application/json" id="inspect-data" set:html={JSON.stringify(inspect)} />
@@ -225,85 +232,75 @@ const inspect = Object.fromEntries(
 </Layout>
 
 <script>
-  import { scramble } from "../../scripts/fx";
-
-  type Rec = { m: string; t: string; q: string; res: string; ok: boolean | null; y: number; n: number; nv: number; d: string; c: string; rn: number; s: string };
+  type Rec = { m: string; t: string; q: string; res: string; ok: boolean | null; y: number; n: number; nv: number; d: string; c: string; rn: number };
   const data = JSON.parse(document.getElementById("inspect-data")?.textContent ?? "{}") as Record<string, Rec>;
   const v = (k: string) => document.querySelector<HTMLElement>(`[data-v="${k}"]`)!;
   let current = "";
 
+  // The preview's text changes at once as the pointer moves down the list (no decoding, so
+  // it stays calm and readable); only its yes bar slides to the new share.
   function inspect(id: string) {
     const r = data[id];
     if (!r || id === current) return;
     current = id;
     document.querySelectorAll("tr.selected").forEach((tr) => tr.classList.remove("selected"));
     document.querySelector(`tr[data-vote="${id}"]`)?.classList.add("selected");
-    v("id").textContent = `${r.c[0]}-${r.rn}`;
-    scramble(v("m"), r.m, 300);
+    v("m").textContent = r.m;
     const res = v("res");
     res.textContent = r.res || "Recorded";
     res.className = `status-tag ${r.ok === true ? "ok" : r.ok === false ? "alert" : "neutral"}`;
-    scramble(v("t"), r.t, 420);
-    scramble(v("q"), r.q, 380);
-    scramble(v("y"), String(r.y), 300);
-    scramble(v("n"), String(r.n), 300);
+    v("t").textContent = r.t;
+    v("q").textContent = r.q;
+    v("y").textContent = String(r.y);
+    v("n").textContent = String(r.n);
     v("bar").style.width = `${r.y + r.n ? (100 * r.y) / (r.y + r.n) : 0}%`;
-    scramble(v("margin"), `Margin: ${r.y - r.n >= 0 ? "+" : ""}${r.y - r.n}`, 300);
-    for (const k of ["d", "s", "c", "rn", "nv"] as const) scramble(v(k), String(r[k]), 300);
+    const diff = r.y - r.n;
+    v("margin").textContent = diff === 0 ? "Tied" : `${Math.abs(diff)} more ${diff > 0 ? "yes" : "no"} than ${diff > 0 ? "no" : "yes"}`;
+    for (const k of ["d", "c", "rn", "nv"] as const) v(k).textContent = String(r[k]);
     const open = v("open") as HTMLAnchorElement;
     open.href = `/votes/${id}`;
     open.hidden = false;
   }
+
+  // On phones the filter rows start folded away (unless one is in use), so the list comes first.
+  const filters = document.querySelector<HTMLDetailsElement>("[data-filters]");
+  const phone = window.matchMedia("(max-width: 640px)");
+  if (filters && !location.search.match(/(chamber|result|session|category)=/) && phone.matches) filters.open = false;
+  phone.addEventListener("change", () => filters && !phone.matches && (filters.open = true));
 
   document.querySelectorAll<HTMLTableRowElement>("tr[data-vote]").forEach((tr) => {
     tr.addEventListener("mouseenter", () => inspect(tr.dataset.vote!));
     tr.addEventListener("focusin", () => inspect(tr.dataset.vote!));
   });
   const first = document.querySelector<HTMLTableRowElement>("tr[data-vote]");
-  if (first && window.matchMedia("(min-width: 1100px)").matches) window.setTimeout(() => inspect(first.dataset.vote!), 700);
+  // Wide screens show the newest vote in the preview from the start, rather than an empty box.
+  if (first && window.matchMedia("(min-width: 1100px)").matches) inspect(first.dataset.vote!);
 </script>
 
 <style>
-  .ctx {
-    margin: 6px 0 16px;
-    font-size: 1.5rem;
-    letter-spacing: -0.02em;
-    color: var(--bright);
-  }
-  .dirs {
-    list-style: none;
-    margin: 10px 0 0;
-    padding: 0;
-  }
-  .dirs a {
-    display: flex;
-    justify-content: space-between;
-    padding: 8px 0;
-    font: 400 0.72rem var(--mono);
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--faint);
-  }
-  .dirs a:hover {
-    color: var(--text);
-  }
-  .dirs a.on {
-    color: var(--bright);
-  }
-  .queue-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 12px;
+  .votes-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
   }
   .title {
     font-size: clamp(1.8rem, 1.4rem + 1.2vw, 2.4rem);
-    margin-bottom: 6px;
+    margin-bottom: 8px;
   }
-  .sort {
-    border: 1px solid var(--line-2);
-    padding: 6px 9px;
+  .sub {
+    margin: 0;
+    color: var(--muted);
   }
+  .cnt {
+    font: 400 var(--fs-xs) var(--mono);
+    opacity: 0.7;
+  }
+  .type-help {
+    margin-left: 102px;
+  }
+  .type-help b {
+    font-weight: 500;
+    color: var(--soft);
+  }
+
   .filters {
     display: grid;
     gap: 12px;
@@ -317,24 +314,34 @@ const inspect = Object.fromEntries(
   }
   .active-filters {
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
-    padding-top: 8px;
+    align-items: center;
+    padding-top: 10px;
     border-top: 1px solid var(--line);
   }
   .active-filters .v {
     color: var(--bright);
   }
-  .clear:hover {
-    color: var(--bright);
-  }
-  .queue :global(.table-scroll) {
-    max-height: 62vh;
+  /* The list runs the length of the page (50 rows) and the preview stays in view beside
+     it, instead of the list scrolling inside a box of its own. */
+  @media (min-width: 1101px) and (min-height: 700px) {
+    .votes-grid > :global(.inspector-panel) {
+      position: sticky;
+      top: calc(var(--bar) + var(--gap));
+    }
   }
   .insp-top {
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
     gap: 10px;
+  }
+  .insp-top .status-tag {
+    max-width: 100%;
+    white-space: normal;
+    line-height: 1.3;
   }
   .big-tag {
     font-size: 0.86rem;
@@ -377,7 +384,7 @@ const inspect = Object.fromEntries(
     color: var(--bright);
   }
   .dimnum {
-    color: #777;
+    color: var(--muted);
   }
   .hatch {
     height: 10px;
@@ -389,7 +396,7 @@ const inspect = Object.fromEntries(
     height: 100%;
     width: 0;
     background: repeating-linear-gradient(135deg, #e6e6e6 0 2px, transparent 2px 5px);
-    transition: width 420ms var(--ease);
+    transition: width 260ms var(--ease);
   }
   .fields {
     margin-bottom: 16px;
@@ -399,8 +406,93 @@ const inspect = Object.fromEntries(
     justify-content: center;
   }
   @media (max-width: 1100px) {
+    .votes-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
     .inspector-panel {
       display: none;
+    }
+  }
+  .filter-set {
+    display: grid;
+    gap: 12px;
+  }
+  .filter-set[open] {
+    display: grid;
+  }
+  /* (The grid gap above doesn't reach a <details> element's rows in every browser.) */
+  .filter-set > .frow + .frow,
+  .filter-set > .type-help + .frow {
+    margin-top: 10px;
+  }
+  .filter-set > .type-help {
+    margin-top: 6px;
+  }
+  /* The "Filters" toggle only shows on phones; wider screens always show the filters. */
+  .filter-set > summary {
+    display: none;
+  }
+  /* The title's heading may wrap when the column is narrow (just above 1100px, beside the
+     preview), so the table stays inside its panel. */
+  .votes-table th:nth-child(4) {
+    white-space: normal;
+  }
+  .vote-q {
+    display: block;
+    margin-top: 3px;
+    font-size: var(--fs-sm);
+    line-height: 1.4;
+    color: var(--muted);
+  }
+  /* Tablets: date and chamber move under the title, so the title gets their width. */
+  .row-meta {
+    display: none;
+  }
+  @media (max-width: 900px) and (min-width: 641px) {
+    .votes-table th:nth-child(-n + 2),
+    .votes-table td:nth-child(-n + 2) {
+      display: none;
+    }
+    .row-meta {
+      display: block;
+      margin-top: 3px;
+      font: 400 var(--fs-sm)/1.35 var(--font);
+      color: var(--muted);
+    }
+  }
+  @media (max-width: 640px) {
+    /* Phone cards: measure and result, then the title, then date and chamber in small type. */
+    .votes-table td:nth-child(3) {
+      order: 1;
+    }
+    .votes-table td.num {
+      order: 2;
+      margin-left: auto;
+    }
+    .votes-table td.subject {
+      order: 3;
+    }
+    .votes-table td.mono {
+      order: 4;
+      font-size: var(--fs-xs);
+    }
+    .frow {
+      grid-template-columns: 1fr;
+      gap: 6px;
+    }
+    .type-help {
+      margin-left: 0;
+    }
+    .filter-set > summary {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 40px;
+      padding: 0 12px;
+      border: 1px solid var(--line-2);
+    }
+    .filter-set[open] > summary {
+      margin-bottom: 4px;
     }
   }
 </style>

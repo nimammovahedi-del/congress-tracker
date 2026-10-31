@@ -50,19 +50,21 @@ export function addDays(iso: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-// '2H AGO', '29D AGO' — console-style elapsed time.
+// '2 hours ago', '29 days ago': how long since something happened, in words.
 export function ago(iso: string | null | undefined, now = Date.now()): string {
-  if (!iso) return "--";
+  if (!iso) return "a while ago";
   const minutes = Math.max(0, Math.round((now - new Date(iso).getTime()) / 60_000));
-  if (minutes < 60) return `${minutes}M AGO`;
+  if (minutes < 2) return "just now";
+  if (minutes < 60) return `${minutes} minutes ago`;
   const hours = Math.round(minutes / 60);
-  if (hours < 48) return `${hours}H AGO`;
-  return `${Math.round(hours / 24)}D AGO`;
+  if (hours < 48) return `${hours} ${hours === 1 ? "hour" : "hours"} ago`;
+  return `${Math.round(hours / 24)} days ago`;
 }
 
-// 'SEP 16, 2026'
+// 'Sep 16, 2026' — the date as shown in lists and tables. (It used to be uppercased; mixed
+// case is easier to read, and labels that want capitals get them from CSS.)
 export function consoleDate(iso: string | null | undefined): string {
-  return formatDate(iso).toUpperCase();
+  return formatDate(iso);
 }
 
 export function formatNumber(n: number | null | undefined): string {
@@ -106,9 +108,10 @@ export function partyClass(party: string | null | undefined): string {
   return party === "D" ? "dem" : party === "R" ? "rep" : "ind";
 }
 
+// How a member voted, in plain words ("yea" and "nay" are the chambers' own terms).
 export const POSITION_LABELS: Record<string, string> = {
-  yea: "Yea",
-  nay: "Nay",
+  yea: "Yes",
+  nay: "No",
   present: "Present",
   not_voting: "Didn't vote",
   other: "Other",
@@ -133,6 +136,13 @@ export function memberTag(m: { party?: string | null; state?: string | null; dis
   const base = `${m.party ?? "?"}-${m.state ?? "?"}`;
   if (m.chamber !== "house" || m.district === null || m.district === undefined) return base;
   return `${base}-${m.district === 0 ? "AL" : m.district}`;
+}
+
+// 'Hank Johnson Jr.' -> 'Johnson': the surname shown in compact lists, skipping suffixes.
+export function lastName(full: string): string {
+  const parts = full.trim().split(/\s+/);
+  while (parts.length > 1 && /^(jr|sr|i{2,3}|iv|v)\.?,?$/i.test(parts.at(-1)!)) parts.pop();
+  return (parts.at(-1) ?? full).replace(/,$/, "");
 }
 
 export function memberTitle(chamber: string | null | undefined): string {

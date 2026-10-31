@@ -1,0 +1,92 @@
+---
+// A word or short label that comes with an explanation ("Votes with party", "Cloture"). It has
+// a dotted underline; the explanation shows on hover (after a short pause), on keyboard focus,
+// and on a tap or click, which pins it open until the next tap elsewhere (touch screens can't
+// hover). The tap handling and edge-of-screen placement live in Layout.astro; without
+// JavaScript, hover and focus still work. Don't put one inside a link.
+interface Props {
+  tip: string;
+}
+const { tip } = Astro.props;
+const id = `term-${Math.random().toString(36).slice(2, 9)}`;
+---
+
+<span class="term"><button type="button" class="term-btn" aria-describedby={id} aria-expanded="false"><slot /></button><span class="term-tip" role="tooltip" id={id}>{tip}</span></span>
+
+<style>
+  .term {
+    position: relative;
+    display: inline;
+  }
+  .term-btn {
+    display: inline;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    text-align: inherit;
+    color: inherit;
+    cursor: help;
+    text-decoration: underline dotted;
+    text-decoration-color: var(--faint);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 4px;
+  }
+  .term-btn:hover,
+  .term.open .term-btn {
+    color: var(--bright);
+    text-decoration-color: var(--bright);
+  }
+  /* Hidden with display (not visibility), so a closed explanation near the edge of a phone
+     screen can't widen the page. */
+  .term-tip {
+    display: none;
+    position: absolute;
+    z-index: 70;
+    top: calc(100% + 8px);
+    left: 0;
+    width: max-content;
+    max-width: min(300px, calc(100vw - 32px));
+    padding: 10px 12px;
+    border: 1px solid var(--line-2);
+    background: #111;
+    box-shadow: 0 12px 28px rgb(0 0 0 / 60%);
+    font: 400 var(--fs-sm)/1.5 var(--font);
+    letter-spacing: 0;
+    text-transform: none;
+    text-align: left;
+    white-space: normal;
+    color: var(--text);
+    transform: translateX(var(--dx, 0px));
+    pointer-events: none;
+  }
+  .term.up .term-tip {
+    top: auto;
+    bottom: calc(100% + 8px);
+  }
+  /* Hover waits a moment, so sweeping the pointer across a label doesn't flash it. */
+  .term:hover .term-tip {
+    display: block;
+    animation: tip-in 140ms ease-out 260ms both;
+  }
+  .term-btn:focus-visible + .term-tip,
+  .term.open .term-tip {
+    display: block;
+    animation: tip-in 120ms ease-out both;
+  }
+  @keyframes tip-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .term:hover .term-tip,
+    .term-btn:focus-visible + .term-tip,
+    .term.open .term-tip {
+      animation-duration: 0s;
+    }
+  }
+</style>

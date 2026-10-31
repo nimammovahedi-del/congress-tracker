@@ -32,7 +32,7 @@ const lines: Line[] = [];
 if (Astro.request.method === "POST") {
   const address = String((await Astro.request.formData()).get("address") ?? "").trim().slice(0, 200);
   if (address) {
-    lines.push({ text: "Geocoding address via U.S. Census Bureau…" });
+    lines.push({ text: "Looking up the address with the U.S. Census Bureau…" });
     try {
       const url = new URL("https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress");
       url.search = new URLSearchParams({ address, benchmark: "Public_AR_Current", vintage: VINTAGES[CONGRESS] ?? "Current_Current", format: "json" }).toString();
@@ -41,7 +41,7 @@ if (Astro.request.method === "POST") {
       const hit = data.result?.addressMatches?.[0];
       if (!hit) {
         error = "No match for that address. Check the street and city, or pick your state below.";
-        lines.push({ text: "NO_MATCH", tone: "alert" });
+        lines.push({ text: "No match found", tone: "alert" });
       } else {
         matched = hit.matchedAddress;
         const geo = hit.geographies;
@@ -50,11 +50,11 @@ if (Astro.request.method === "POST") {
         const base = cdKey ? geo[cdKey]?.[0]?.BASENAME : undefined;
         district = base === undefined ? null : /^\d+$/.test(base) ? Number(base) : 0; // non-numeric = at-large
         lines.push({ text: `Match: ${matched}`, tone: "bright" });
-        lines.push({ text: `District resolved: ${state}-${district === 0 ? "AL" : (district ?? "?")}`, tone: "bright" });
+        lines.push({ text: `Congressional district: ${state}-${district === 0 ? "at large" : (district ?? "?")}`, tone: "bright" });
       }
     } catch {
       error = "The Census Bureau's address lookup didn't respond. Try again, or pick your state below.";
-      lines.push({ text: "GEOCODER_TIMEOUT", tone: "alert" });
+      lines.push({ text: "The lookup timed out", tone: "alert" });
     }
   }
 }
@@ -70,25 +70,28 @@ const reps = validState
 const senators = reps.filter((r) => r.chamber === "senate");
 const house = district === null ? reps.filter((r) => r.chamber === "house") : reps.filter((r) => r.chamber === "house" && r.district === district);
 const stats = reps.length ? new Map((await memberStats()).map((s) => [s.id, s])) : new Map();
-if (reps.length) lines.push({ text: `${senators.length + house.length} nodes located`, tone: "ok" });
+if (reps.length) lines.push({ text: `Found ${senators.length + house.length} members of Congress`, tone: "ok" });
+// Cards shown before "Show all" in a long list (Texas has 38 representatives).
+const FOLD = 6;
 const seatLabel = (r: Rep) => (r.chamber === "senate" ? "Senator" : `Representative · ${r.state}-${r.district === 0 ? "AL" : r.district}`);
 ---
 
-<Layout title="Find my representatives" crumbs={["Locate", validState ? (STATES[validState] ?? validState) : "Address"]}>
+<Layout title="Find my representatives" crumbs={validState ? [{ label: "Find my rep", href: "/find" }, { label: STATES[validState] ?? validState }] : [{ label: "Find my rep" }]}>
   <div class="console">
     <div class="cols cols-main-side">
-      <Panel invert>
+      <Panel>
         <form class="panel-body cmd" method="post" action="/find">
-          <label class="label" for="addr">Command input // Locate representatives</label>
+          <h1 class="cmd-title">Find your representatives</h1>
+          <label class="cmd-label" for="addr">Enter your home address to see your two senators and your member of the House.</label>
           <div class="cmd-line">
-            <span>&gt; locate</span>
-            <input id="addr" name="address" type="text" placeholder="street address, city, state" autocomplete="street-address" required />
-            <button class="go" type="submit">Enter</button>
+            <span aria-hidden="true">&gt;</span>
+            <input id="addr" name="address" type="text" placeholder="Street address, city, state" autocomplete="street-address" required />
+            <button class="go" type="submit">Find</button>
           </div>
-          <p class="hint">Your address goes only to the U.S. Census Bureau's geocoder to find your district. It isn't stored.</p>
+          <p class="hint">Your address goes only to the U.S. Census Bureau's address lookup to find your district. It isn't stored.</p>
         </form>
       </Panel>
-      <Panel label="Or select a state">
+      <Panel label="Or pick a state">
         <form class="panel-body state-form" action="/find">
           <select name="state" aria-label="State" onchange="this.form.submit()">
             <option value="">Choose a state…</option>
@@ -96,91 +99,109 @@ const seatLabel = (r: Rep) => (r.chamber === "senate" ? "Senator" : `Representat
           </select>
           <noscript><button class="btn ghost" type="submit">Show</button></noscript>
         </form>
+        {
+          (lines.length > 0 || reps.length > 0) && (
+            <Terminal lines={lines.length ? lines : [{ text: `State: ${STATES[validState]}`, tone: "bright" }, { text: `Found ${reps.length} members of Congress`, tone: "ok" }]} delay={200} />
+          )
+        }
       </Panel>
     </div>
 
-    {error && <p class="error label">{error}</p>}
+    {error && <p class="error">{error}</p>}
 
     {
-      (lines.length > 0 || reps.length > 0) && (
-        <div class="cols cols-side results">
-          <Panel label="Locator_log" code="0xGEO">
-            <Terminal lines={lines.length ? lines : [{ text: `State selected: ${STATES[validState]}`, tone: "bright" }, { text: `${reps.length} nodes located`, tone: "ok" }]} delay={200} />
-          </Panel>
-          <div class="nodes">
-            {[...senators, ...house].map((r) => {
-              const s = stats.get(r.bioguide_id);
-              const p = r.party === "D" || r.party === "R" ? r.party : "I";
-              return (
-                <Panel label={seatLabel(r)} code={r.bioguide_id}>
-                  <a class="panel-body node" href={`/members/${r.bioguide_id}`}>
-                    <span class="vf">{r.photo_url && <img src={r.photo_url} alt="" loading="lazy" />}<span class="cross" /></span>
-                    <span class="info">
-                      <span class="nname">{r.full_name}</span>
-                      <span class={`party ${partyClass(p)}`}>{PARTY[p]?.name ?? p}</span>
-                      <span class="rows-list">
-                        <span><span>Party alignment</span><span>{s?.party_unity_pct ?? "--"}%</span></span>
-                        <span><span>Missed votes</span><span>{s?.missed_pct ?? "--"}%</span></span>
-                        <span><span>Sponsored</span><span>{s?.sponsored ?? 0}</span></span>
+      [
+        { title: senators.length === 1 ? "Senator" : "Senators", list: senators },
+        { title: district === null ? `Members of the House · ${house.length}` : house.length === 1 ? "Your member of the House" : "Members of the House", list: house },
+      ]
+        .filter((g) => g.list.length > 0)
+        .map((g, gi) => (
+          <section class="group">
+            <h2 class="group-title">
+              {g.title}
+              {matched && <span class="group-for"> · for {matched}</span>}
+              {!matched && validState && <span class="group-for"> · {STATES[validState]}</span>}
+            </h2>
+            {gi === 0 && <p class="note group-note">“Votes with party” is how often they voted with most of their own party on votes where most Democrats and most Republicans took opposite sides.</p>}
+            {/* A big state's House list shows its first few members and a button for the rest
+                (every card shows without JavaScript). */}
+            <div class="nodes" data-fold={g.list.length > FOLD + 2 ? FOLD : undefined}>
+              {g.list.map((r, i) => {
+                const s = stats.get(r.bioguide_id);
+                const p = r.party === "D" || r.party === "R" ? r.party : "I";
+                return (
+                  <Panel label={seatLabel(r)} class={g.list.length > FOLD + 2 && i >= FOLD ? "more" : undefined}>
+                    <a class="panel-body node" href={`/members/${r.bioguide_id}`}>
+                      <span class="vf">{r.photo_url && <img src={r.photo_url} alt="" loading="lazy" />}<span class="cross" /></span>
+                      <span class="info">
+                        <span class="nname">{r.full_name}</span>
+                        <span class={`party ${partyClass(p)}`}>{PARTY[p]?.name ?? p}</span>
+                        <span class="rows-list">
+                          <span><span>Votes with party</span><span>{s?.party_unity_pct ?? "--"}%</span></span>
+                          <span><span>Missed votes</span><span>{s?.missed_pct ?? "--"}%</span></span>
+                          <span><span>Bills sponsored</span><span>{s?.sponsored ?? 0}</span></span>
+                        </span>
                       </span>
-                    </span>
-                  </a>
-                  <div class="panel-body contact">
-                    {r.phone && <a class="btn ghost" href={`tel:${r.phone}`}>Call {r.phone}</a>}
-                    {r.contact_form && <a class="btn ghost" href={r.contact_form} target="_blank" rel="noopener">Write ↗</a>}
-                    <a class="btn" href={`/members/${r.bioguide_id}`}>Voting record ›</a>
-                  </div>
-                </Panel>
-              );
-            })}
-          </div>
-        </div>
-      )
+                    </a>
+                    <div class="panel-body contact">
+                      {r.phone && <a class="btn ghost" href={`tel:${r.phone}`}>Call {r.phone}</a>}
+                      {r.contact_form && <a class="btn ghost" href={r.contact_form} target="_blank" rel="noopener">Write ↗</a>}
+                      <a class="btn ghost" href={`/members/${r.bioguide_id}`}>Voting record →</a>
+                    </div>
+                  </Panel>
+                );
+              })}
+            </div>
+          </section>
+        ))
     }
   </div>
 </Layout>
 
+<script>
+  // Long lists fold after their first few cards, with a button that shows the rest.
+  document.querySelectorAll<HTMLElement>(".nodes[data-fold]").forEach((grid) => {
+    const hidden = grid.querySelectorAll(":scope > .more").length;
+    if (!hidden) return;
+    grid.classList.add("folded");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "btn ghost show-all";
+    button.textContent = `Show all ${grid.children.length} members of the House`;
+    button.setAttribute("aria-expanded", "false");
+    button.addEventListener("click", () => {
+      grid.classList.remove("folded");
+      button.remove();
+      grid.querySelector<HTMLElement>(":scope > .more a")?.focus({ preventScroll: true });
+    });
+    grid.insertAdjacentElement("afterend", button);
+  });
+</script>
+
 <style>
+  /* The address form sits in the dark page like the home search: the inset field and button
+     are styled in global.css. */
   .cmd {
+    display: grid;
+    gap: 12px;
     padding: clamp(20px, 3vw, 32px);
   }
+  .cmd-title {
+    margin: 0;
+    font-size: clamp(1.9rem, 1.4rem + 1.6vw, 2.8rem);
+  }
+  .cmd-label {
+    max-width: 60ch;
+    color: var(--soft);
+  }
   .cmd-line {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    margin-top: 16px;
-    font: 500 clamp(1rem, 0.9rem + 0.8vw, 1.5rem) var(--mono);
-    border-bottom: 1px solid #c4c4c4;
-  }
-  .cmd-line > span {
-    white-space: nowrap;
-  }
-  .cmd-line input {
-    flex: 1;
-    min-width: 0;
-    border: 0;
-    padding: 12px 0;
-    background: transparent;
-    color: #050505;
-    font: inherit;
-  }
-  .cmd-line input:focus-visible {
-    outline: none;
-  }
-  .go {
-    border: 1px solid #050505;
-    background: #050505;
-    color: #ececec;
-    font: 500 0.66rem var(--mono);
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    padding: 9px 14px;
-    cursor: pointer;
+    margin-top: 4px;
   }
   .hint {
-    margin: 14px 0 0;
-    font: 0.72rem var(--mono);
-    color: #555;
+    max-width: 60ch;
+    margin: 0;
+    font: 400 var(--fs-sm)/1.5 var(--font);
+    color: var(--muted);
   }
   .state-form {
     display: flex;
@@ -188,19 +209,39 @@ const seatLabel = (r: Rep) => (r.chamber === "senate" ? "Senator" : `Representat
   }
   .error {
     margin: var(--gap) 0 0;
+    font-size: 0.95rem;
     color: var(--alert);
   }
-  .results {
+  .group {
+    margin-top: calc(var(--gap) * 2);
+  }
+  .group-title {
+    margin: 0 0 var(--gap);
+    font-size: clamp(1.3rem, 1.1rem + 0.6vw, 1.7rem);
+  }
+  .group-for {
+    color: var(--muted);
+  }
+  .group-note {
+    max-width: 75ch;
+    margin: calc(var(--gap) * -0.5) 0 var(--gap);
+  }
+  :global(.folded) > .more {
+    display: none;
+  }
+  .show-all {
     margin-top: var(--gap);
   }
+  /* Cards are at least 340px wide: three across on a laptop, two on a tablet, one on a
+     phone. The portrait gives up width before the numbers beside it do. */
   .nodes {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
     gap: var(--gap);
   }
   .node {
     display: grid;
-    grid-template-columns: 110px 1fr;
+    grid-template-columns: min(110px, 30%) minmax(0, 1fr);
     gap: 16px;
   }
   .vf {
@@ -244,13 +285,15 @@ const seatLabel = (r: Rep) => (r.chamber === "senate" ? "Senator" : `Representat
   .info .rows-list > span {
     display: flex;
     justify-content: space-between;
+    align-items: baseline;
     padding: 7px 0;
     border-bottom: 1px solid var(--line);
-    font: 0.72rem var(--mono);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+    font: 0.9rem var(--mono);
   }
   .info .rows-list > span > span:first-child {
+    font-size: var(--fs-xs);
+    letter-spacing: var(--track);
+    text-transform: uppercase;
     color: var(--muted);
   }
   .info .rows-list > span > span:last-child {

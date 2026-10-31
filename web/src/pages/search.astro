@@ -2,8 +2,8 @@
 import Panel from "../components/Panel.astro";
 import StatusTag from "../components/StatusTag.astro";
 import Layout from "../layouts/Layout.astro";
-import { BILL_LIST_COLUMNS, BILL_LIST_JOIN, row, rows, type BillListItem } from "../lib/db";
-import { billNumber, consoleDate, CONGRESS, memberTag, partyClass } from "../lib/format";
+import { BILL_LIST_COLUMNS, BILL_LIST_JOIN, row, rows, stat, type BillListItem, type Topic } from "../lib/db";
+import { billNumber, consoleDate, CONGRESS, memberTag, partyClass, STATES } from "../lib/format";
 
 const q = (Astro.url.searchParams.get("q") ?? "").trim().slice(0, 120);
 
@@ -14,86 +14,192 @@ if (ref) {
   if (await row("SELECT 1 FROM bills WHERE id = ?", id)) return Astro.redirect(`/bills/${id}`);
 }
 
-// Full-text search over bill titles: every word must match; the last may be a prefix.
+// Full-text search over bill titles and each bill's search text (policy area, subject tags,
+// official and AI summaries), so everyday words find bills even when they aren't in the
+// title. Matches in the title count most. If few bills contain every word, bills containing
+// some of the words are added after them as close matches.
 const words = q.split(/\s+/).map((w) => w.replace(/["*^():{}\[\]-]/g, "")).filter((w) => w.length > 0).slice(0, 8);
-const match = words.map((w, i) => (i === words.length - 1 && w.length > 2 ? `"${w}"*` : `"${w}"`)).join(" ");
+const STOPWORDS = new Set(["a", "an", "and", "the", "of", "to", "for", "in", "on", "or", "by", "with", "act", "bill", "bills"]);
+// The last word may be unfinished, so it also matches as a prefix (but not short words: "atm"
+// shouldn't find "atmosphere").
+const term = (w: string, prefix: boolean) => (prefix && w.length > 3 ? `"${w}"*` : `"${w}"`);
+const allWords = words.map((w, i) => term(w, i === words.length - 1)).join(" ");
+const someWords = words.filter((w) => !STOPWORDS.has(w.toLowerCase())).map((w) => term(w, true)).join(" OR ");
+const LIMIT = 40;
 
-const [bills, members] = q
+type BillHit = BillListItem & { snip: string | null; close?: boolean };
+// The snippet marks matched words with control characters, which can't appear in the data.
+const searchBills = (expr: string) =>
+  rows<BillHit>(
+    `SELECT ${BILL_LIST_COLUMNS}, snippet(bills_fts, -1, char(2), char(3), '…', 16) AS snip
+       FROM bills_fts f JOIN bills b ON b.rowid = f.rowid ${BILL_LIST_JOIN}
+      WHERE bills_fts MATCH ? ORDER BY bm25(bills_fts, 10.0, 3.0, 1.0) LIMIT ${LIMIT}`,
+    expr,
+  ).catch(() => [] as BillHit[]);
+
+// A state's name or postal code ("texas", "tx") lists that state's members.
+const stateCode = Object.entries(STATES).find(([code, name]) => [code.toLowerCase(), name.toLowerCase()].includes(q.toLowerCase()))?.[0] ?? "";
+
+const [exact, members] = q
   ? await Promise.all([
-      match
-        ? rows<BillListItem>(
-            `SELECT ${BILL_LIST_COLUMNS} FROM bills_fts f JOIN bills b ON b.rowid = f.rowid ${BILL_LIST_JOIN}
-              WHERE bills_fts MATCH ? ORDER BY rank LIMIT 40`,
-            match,
-          ).catch(() => [] as BillListItem[])
-        : [],
+      allWords ? searchBills(allWords) : ([] as BillHit[]),
       rows<{ bioguide_id: string; full_name: string; party: string | null; state: string | null; district: number | null; chamber: string | null; in_office: number; photo_url: string | null }>(
         `SELECT bioguide_id, full_name, party, state, district, chamber, in_office, photo_url FROM members
-          WHERE full_name LIKE ? ORDER BY in_office DESC, last_name LIMIT 12`,
+          WHERE full_name LIKE ? OR (state = ? AND in_office = 1)
+          ORDER BY in_office DESC, chamber DESC, district, last_name LIMIT ?`,
         `%${q}%`,
+        stateCode,
+        stateCode ? 60 : 12,
       ),
     ])
-  : [[], []];
+  : [[] as BillHit[], []];
+let bills: BillHit[] = exact;
+if (q && exact.length < 15 && words.length > 1 && someWords) {
+  const seen = new Set(exact.map((b) => b.id));
+  const close = (await searchBills(someWords)).filter((b) => !seen.has(b.id)).map((b) => ({ ...b, close: true }));
+  bills = [...exact, ...close].slice(0, LIMIT);
+}
+
+// Show where a bill matched when it wasn't the title, with the matched words highlighted.
+const escapeHtml = (s: string) => s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+const matchContext = (b: BillHit) => {
+  if (!b.snip) return null;
+  const plain = b.snip.replace(/[\u0002\u0003]/g, "");
+  if (b.title.includes(plain.replace(/…/g, "").trim())) return null;
+  // Subject tags arrive as a run ("Immigration · Border security… · Latin America · …");
+  // only the ones holding a matched word are shown, so the line says why it matched.
+  const parts = b.snip.split(" · ");
+  const hits = parts.filter((p) => p.includes("\u0002"));
+  const snip = hits.length && hits.length < parts.length ? hits.join(" · ") : b.snip;
+  return escapeHtml(snip).replace(/\u0002/g, "<mark>").replace(/\u0003/g, "</mark>");
+};
+
+// Topics come from the precomputed topic list (one stored row, no table scan): a policy area or
+// subtopic whose name contains every search word.
+const topicList = q ? ((await stat<Topic[]>("topics")) ?? []) : [];
+const has = (name: string) => words.length > 0 && words.every((w) => name.toLowerCase().includes(w.toLowerCase()));
+const topicHits = topicList
+  .flatMap((t) => [
+    ...(has(t.area) ? [{ name: t.area, href: `/topics/${t.slug}`, n: t.bills, area: null as string | null }] : []),
+    ...t.subjects.filter((x) => has(x.name)).map((x) => ({ name: x.name, href: `/topics/${t.slug}?subject=${x.slug}`, n: x.bills, area: t.area })),
+  ])
+  .slice(0, 8);
+const EXAMPLES = ["H.R. 1", "border security", "veterans", "Medicare", "farm"];
 ---
 
-<Layout title={q ? `Search: ${q}` : "Search"} crumbs={["Search", q ? `"${q}"` : "Query"]}>
+<Layout title={q ? `Search: ${q}` : "Search"} crumbs={q ? [{ label: "Search", href: "/search" }, { label: `"${q}"` }] : [{ label: "Search" }]}>
   <div class="console">
-    <Panel invert class="cmd-panel">
+    <Panel class="cmd-panel">
       <form class="panel-body cmd" action="/search" role="search">
-        <label class="label" for="search-q">Command input // Search bills and members</label>
+        <h1 class="cmd-label"><label for="search-q">Search bills, members, and topics</label></h1>
         <div class="cmd-line">
-          <span>&gt; search</span>
-          <input id="search-q" name="q" type="search" value={q} placeholder="topic, bill title, H.R. 1, or member name" autocomplete="off" autofocus />
-          <button class="go" type="submit">Enter</button>
+          <span aria-hidden="true">&gt;</span>
+          <input id="search-q" name="q" type="search" value={q} placeholder="Try H.R. 1 or veterans" autocomplete="off" autofocus />
+          <button class="go" type="submit">Search</button>
         </div>
+        {
+          !q && (
+            <p class="hint">
+              Search matches bill titles and summaries, topics, and members' names and states, so everyday words work. Try:{" "}
+              {EXAMPLES.map((e, i) => (
+                <>
+                  {i > 0 && " · "}
+                  <a href={`/search?q=${encodeURIComponent(e)}`}>{e}</a>
+                </>
+              ))}
+            </p>
+          )
+        }
       </form>
     </Panel>
 
     {
+      !q && (
+        <div class="cols starts">
+          <a class="start" href="/find"><span class="label">Who represents me?</span><span class="start-t">Find your representatives →</span></a>
+          <a class="start" href="/topics"><span class="label">Bills on a subject</span><span class="start-t">Browse bills by topic →</span></a>
+          <a class="start" href="/votes"><span class="label">How Congress voted</span><span class="start-t">See every vote →</span></a>
+          <a class="start" href="/members"><span class="label">Senators and representatives</span><span class="start-t">All members of Congress →</span></a>
+        </div>
+      )
+    }
+
+    {
+      q && topicHits.length > 0 && (
+        <Panel label="Matching topics" class="results">
+          <div class="panel-body topic-hits">
+            {topicHits.map((t) => (
+              <a class="toggle" href={t.href}>
+                {t.area && <span class="faint">{t.area} ›</span>} {t.name} <span class="faint">{t.n.toLocaleString("en-US")}</span>
+              </a>
+            ))}
+          </div>
+        </Panel>
+      )
+    }
+
+    {
       q && (
-        <div class="cols cols-main-side results">
-          <Panel label="Measures" code={`${bills.length} MATCH${bills.length === 1 ? "" : "ES"}`}>
+        <div class:list={["cols results", members.length ? "cols-main-side" : undefined]}>
+          <Panel label="Bills and resolutions" code={`${bills.length}${bills.length === 40 ? "+" : ""} found`}>
             {bills.length ? (
-              <div class="table-scroll">
-                <table class="rtable">
-                  <thead><tr><th>Measure</th><th>Subject</th><th>Status</th><th>Last action</th></tr></thead>
-                  <tbody>
-                    {bills.map((b) => (
-                      <tr data-href={`/bills/${b.id}`}>
-                        <td><a class="tag" href={`/bills/${b.id}`}>{billNumber(b.bill_type, b.number)}</a></td>
-                        <td class="subject">{b.title}</td>
-                        <td><StatusTag status={b.status} /></td>
-                        <td class="mono">{consoleDate(b.latest_action_date)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <ol class="reclist">
+                {bills.map((b, i) => {
+                  const context = matchContext(b);
+                  return (
+                    <>
+                      {b.close && !bills[i - 1]?.close && <li class="close-head">Close matches <span class="note">· these contain some of your words</span></li>}
+                      <li>
+                        <a href={`/bills/${b.id}`}>
+                          <span class="tag">{billNumber(b.bill_type, b.number)}</span>
+                          <span class:list={["rl-title", context && "has-sub"]}>
+                            {context ? <span class="clamp-2">{b.title}</span> : b.title}
+                            {context && <span class="rl-sub rl-why" set:html={`Matched: ${context}`} />}
+                          </span>
+                          <span class="rl-meta"><StatusTag status={b.status} /><span>{consoleDate(b.latest_action_date)}</span></span>
+                        </a>
+                      </li>
+                    </>
+                  );
+                })}
+              </ol>
             ) : (
-              <p class="empty">No measures match “{q}”</p>
+              <div class="empty">
+                <p>No bills match “{q}”.</p>
+                <p>
+                  Try fewer or more general words, check the spelling, or search for a bill number like “H.R. 1”. Or try:{" "}
+                  {EXAMPLES.slice(1, 4).map((e, i) => (
+                    <>
+                      {i > 0 && " · "}
+                      <a class="link" href={`/search?q=${encodeURIComponent(e)}`}>{e}</a>
+                    </>
+                  ))}
+                </p>
+                <a class="toggle" href="/topics">Browse bills by topic instead</a>
+              </div>
             )}
           </Panel>
 
-          <Panel label="Members" code={`${members.length}`}>
-            {members.length ? (
-              <ul class="people">
-                {members.map((m) => (
-                  <li>
-                    <a href={`/members/${m.bioguide_id}`}>
-                      <span class="thumb">{m.photo_url && <img src={m.photo_url} alt="" loading="lazy" />}</span>
-                      <span>
-                        <span class="pname">{m.full_name}</span>
-                        <span class={`party ${partyClass(m.party)}`}>{memberTag(m)}</span>
-                        {!m.in_office && <span class="label faint"> · former</span>}
-                      </span>
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p class="empty">No members match</p>
-            )}
-          </Panel>
+          {
+            members.length > 0 && (
+              <Panel label="Members" code={`${members.length} found`}>
+                <ul class="people">
+                  {members.map((m) => (
+                    <li>
+                      <a href={`/members/${m.bioguide_id}`}>
+                        <span class="thumb">{m.photo_url && <img src={m.photo_url} alt="" loading="lazy" />}</span>
+                        <span>
+                          <span class="pname">{m.full_name}</span>
+                          <span class={`party ${partyClass(m.party)}`}>{memberTag(m)}</span>
+                          {!m.in_office && <span class="faint former"> · former</span>}
+                        </span>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </Panel>
+            )
+          }
         </div>
       )
     }
@@ -101,51 +207,103 @@ const [bills, members] = q
 </Layout>
 
 <style>
+  /* The search box sits in the dark page like the home page's: the inset field and button
+     are styled in global.css. Here the query is the subject of the page, so it's larger. */
   .cmd {
-    padding: clamp(20px, 3vw, 34px);
-  }
-  .cmd-line {
-    display: flex;
-    align-items: center;
+    display: grid;
     gap: 14px;
-    margin-top: 16px;
-    font: 500 clamp(1.1rem, 0.9rem + 1vw, 1.8rem) var(--mono);
-    border-bottom: 1px solid #c4c4c4;
+    padding: clamp(18px, 2.4vw, 28px);
   }
-  .cmd-line > span {
-    white-space: nowrap;
+  /* The page's heading is the search box's label, at label size. */
+  .cmd-label {
+    margin: 0;
+    font-size: clamp(1.1rem, 1rem + 0.4vw, 1.35rem);
+    line-height: 1.3;
+    letter-spacing: -0.015em;
+    color: var(--text);
   }
   .cmd-line input {
-    flex: 1;
-    min-width: 0;
-    border: 0;
-    padding: 14px 0;
-    background: transparent;
-    color: #050505;
-    font: inherit;
+    font-size: clamp(1rem, 0.9rem + 0.5vw, 1.3rem);
   }
-  .cmd-line input::placeholder {
-    color: #a0a0a0;
+  .hint {
+    margin: 0;
+    font: 400 0.94rem/1.6 var(--font);
+    color: var(--muted);
   }
-  .cmd-line input:focus-visible {
-    outline: none;
+  .hint a {
+    display: inline-block;
+    padding: 4px 0;
+    color: var(--bright);
+    text-decoration: underline;
+    text-decoration-color: var(--faint);
+    text-underline-offset: 3px;
   }
-  .go {
-    border: 1px solid #050505;
-    background: #050505;
-    color: #ececec;
-    font: 500 0.66rem var(--mono);
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    padding: 9px 14px;
-    cursor: pointer;
-  }
-  .go:hover {
-    background: transparent;
-    color: #050505;
+  .hint a:hover {
+    text-decoration-color: var(--bright);
   }
   .results {
     margin-top: var(--gap);
+  }
+  .starts {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+    margin-top: var(--gap);
+  }
+  .start {
+    display: grid;
+    gap: 8px;
+    padding: 20px 22px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    transition:
+      border-color 120ms ease,
+      background 120ms ease;
+  }
+  .start:hover {
+    border-color: var(--muted);
+    background: var(--raise);
+  }
+  .start-t {
+    font-size: 1.2rem;
+    letter-spacing: -0.015em;
+    color: var(--bright);
+  }
+  .topic-hits {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  /* A topic link reads as one line of text that wraps as a whole on a phone, rather than
+     as three side-by-side pieces that each wrap ("Immigration ›" over two lines). */
+  .topic-hits .toggle {
+    display: inline-block;
+    max-width: 100%;
+    font-weight: 400;
+    line-height: 1.4;
+  }
+  .rl-why {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin-top: 6px;
+  }
+  .rl-why :global(mark) {
+    background: transparent;
+    color: var(--bright);
+    border-bottom: 1px solid var(--bright);
+  }
+  .close-head {
+    padding: 16px var(--pad) 10px;
+    border-top: 1px solid var(--line-2);
+    font-weight: 500;
+    color: var(--bright);
+  }
+  .close-head .note {
+    display: inline;
+    font-weight: 400;
+  }
+  .former {
+    font-size: var(--fs-sm);
   }
   .people {
     list-style: none;
@@ -156,8 +314,12 @@ const [bills, members] = q
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 9px 0;
+    padding: 10px 6px;
     border-bottom: 1px solid var(--line);
+    transition: background 100ms ease;
+  }
+  .people a:hover {
+    background: var(--raise);
   }
   .thumb {
     width: 32px;

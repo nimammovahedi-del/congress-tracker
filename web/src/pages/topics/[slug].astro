@@ -4,7 +4,7 @@ import SegBar from "../../components/SegBar.astro";
 import StatusTag from "../../components/StatusTag.astro";
 import Layout from "../../layouts/Layout.astro";
 import { BILL_LIST_COLUMNS, BILL_LIST_JOIN, row, rows, stat, type BillListItem, type Topic } from "../../lib/db";
-import { billNumber, consoleDate, partyClass } from "../../lib/format";
+import { billNumber, consoleDate, lastName, partyClass } from "../../lib/format";
 
 const topics = (await stat<Topic[]>("topics")) ?? [];
 const topic = topics.find((t) => t.slug === Astro.params.slug);
@@ -49,86 +49,104 @@ const link = (changes: Record<string, string>) => {
 };
 ---
 
-<Layout title={subject ? `${subject.name} · ${topic.area}` : topic.area} crumbs={["Directories", topic.area]}>
+<Layout title={subject ? `${subject.name} · ${topic.area}` : topic.area} crumbs={subject ? [{ label: "Topics", href: "/topics" }, { label: topic.area, href: `/topics/${topic.slug}` }, { label: subject.name }] : [{ label: "Topics", href: "/topics" }, { label: topic.area }]}>
   <div class="console">
-    <div class="cols cols-side">
-      <div class="stack">
-        <Panel label="Directory" code={topic.slug.slice(0, 10).toUpperCase()}>
-          <div class="panel-body">
-            <p class="label">Policy_area</p>
-            <p class="area">{topic.area}</p>
-            <div class="rows-list">
-              <div><span>Measures</span><span>{topic.bills.toLocaleString("en-US")}</span></div>
-              <div><span>Advanced</span><span>{topic.advanced.toLocaleString("en-US")}</span></div>
-              <div><span>Enacted</span><span class="ok">{topic.laws}</span></div>
+    {/* The title has its own panel so that on one column it comes first, before the topic's
+        numbers and subtopics; on wide screens it sits above the list. */}
+    <div class="cols cols-side topic-grid">
+      <Panel class="topic-head">
+        <div class="panel-body head">
+          <p class="label">{subject ? `Subtopic of ${topic.area}` : "Policy area"}</p>
+          <h1 class="title cursor"><span data-scramble>{subject?.name ?? topic.area}</span></h1>
+          <p class="note">Showing {bills.length} of {total.toLocaleString("en-US")} bills · most recent action first</p>
+        </div>
+      </Panel>
+
+      <div class="stack side">
+        <Panel label="About this topic">
+          <div class="panel-body about">
+            {/* On a subtopic's page these numbers are for the whole policy area, so it's named;
+                on the area's own page the title above already says it. */}
+            {
+              subject && (
+                <>
+                  <p class="label">Policy area</p>
+                  <p class="area">{topic.area}</p>
+                </>
+              )
+            }
+            <div class="rows-list facts">
+              <div><span>Bills</span><span>{topic.bills.toLocaleString("en-US")}</span></div>
+              <div><span>Passed a chamber</span><span>{topic.advanced.toLocaleString("en-US")}</span></div>
+              <div><span>Became law</span><span class="ok">{topic.laws}</span></div>
               <div><span>Last activity</span><span>{consoleDate(topic.latest)}</span></div>
             </div>
           </div>
-          <div class="panel-body">
-            <p class="label">Subtopics</p>
+          <details class="panel-body subs-box" open data-subtopics>
+            <summary>Narrow by subtopic{subject && <span class="faint"> · {subject.name}</span>}</summary>
+            <p class="label subs-title">Subtopics</p>
             <ul class="subs">
               <li>
-                <a href={link({ subject: "" })} class={!subject ? "on" : undefined}><span>[ All ]</span><span>{topic.bills}</span></a>
+                <a href={link({ subject: "" })} class={!subject ? "on" : undefined}><span>All subtopics</span><span>{topic.bills.toLocaleString("en-US")}</span></a>
               </li>
               {
                 topic.subjects.map((s) => (
                   <li>
                     <a href={link({ subject: s.slug })} class={subject?.slug === s.slug ? "on" : undefined}>
                       <span>{s.name}</span>
-                      <span>{s.bills}</span>
+                      <span>{s.bills.toLocaleString("en-US")}</span>
                     </a>
                     <SegBar value={s.bills} max={largestSub} cells={20} height={3} tone={subject?.slug === s.slug ? "bright" : "dim"} />
                   </li>
                 ))
               }
             </ul>
-          </div>
+          </details>
         </Panel>
-        <a class="btn ghost back" href="/topics">‹ All directories</a>
+        <a class="btn ghost back" href="/topics">‹ All topics</a>
       </div>
 
       <Panel class="queue">
-        <div class="panel-body head">
-          <p class="label"><span data-scramble>{topic.area}</span>{subject && <> <span class="faint">//</span> <span data-scramble>{subject.name}</span></>}</p>
-          <h1 class="title cursor"><span data-scramble>{subject?.name ?? topic.area}</span></h1>
-          <p class="label">Displaying {bills.length} of {total.toLocaleString("en-US")} records · sorted by latest action</p>
-        </div>
         <div class="panel-body frow">
           <span class="label">Status</span>
           <div class="toggles">
-            <a class:list={["toggle", status === "all" && "active"]} href={link({ status: "all" })}>All</a>
-            <a class:list={["toggle", status === "advanced" && "active"]} href={link({ status: "advanced" })}>Passed a chamber</a>
-            <a class:list={["toggle", status === "law" && "active"]} href={link({ status: "law" })}>Enacted</a>
+            <a class:list={["toggle", status === "all" && "active"]} aria-current={status === "all" ? "true" : undefined} href={link({ status: "all" })}>All</a>
+            <a class:list={["toggle", status === "advanced" && "active"]} aria-current={status === "advanced" ? "true" : undefined} href={link({ status: "advanced" })}>Passed a chamber</a>
+            <a class:list={["toggle", status === "law" && "active"]} aria-current={status === "law" ? "true" : undefined} href={link({ status: "law" })}>Became law</a>
           </div>
         </div>
         {
           bills.length ? (
-            <div class="table-scroll">
-              <table class="rtable">
-                <thead><tr><th>Measure</th><th>Subject</th><th>Sponsor</th><th>Status</th><th>Last action</th></tr></thead>
-                <tbody>
-                  {bills.map((b) => (
-                    <tr data-href={`/bills/${b.id}`}>
-                      <td><a class="tag" href={`/bills/${b.id}`}>{billNumber(b.bill_type, b.number)}</a></td>
-                      <td class="subject">{b.title}</td>
-                      <td class="mono">
-                        {b.sponsor_name?.split(" ").at(-1)} <span class={`party ${partyClass(b.sponsor_party)}`}>{b.sponsor_party}-{b.sponsor_state}</span>
-                      </td>
-                      <td><StatusTag status={b.status} /></td>
-                      <td class="mono">{consoleDate(b.latest_action_date)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <ol class="reclist wide-meta">
+              {bills.map((b) => (
+                <li>
+                  <a href={`/bills/${b.id}`}>
+                    <span class="tag">{billNumber(b.bill_type, b.number)}</span>
+                    <span class="rl-title">{b.title}</span>
+                    <span class="rl-meta">
+                      {b.sponsor_name && (
+                        <span>
+                          {lastName(b.sponsor_name)} <span class={`party ${partyClass(b.sponsor_party)}`}>{b.sponsor_party}-{b.sponsor_state}</span>
+                        </span>
+                      )}
+                      <StatusTag status={b.status} />
+                      <span>{consoleDate(b.latest_action_date)}</span>
+                    </span>
+                  </a>
+                </li>
+              ))}
+            </ol>
           ) : (
-            <p class="empty">No records match</p>
+            <div class="empty">
+              <p>No bills {subject ? `on ${subject.name}` : "in this topic"} {status === "law" ? "have become law yet" : status === "advanced" ? "have passed a chamber yet" : "on this page"}.</p>
+              <a class="toggle" href={status === "all" ? link({ subject: "" }) : link({ status: "all" })}>Show all {status === "all" ? topic.area : subject ? subject.name : topic.area} bills</a>
+            </div>
           )
         }
         <p class="pager">
-          <span>Page {page} / {pages}</span>
+          <span>Page {page} of {pages}</span>
           <span class="toggles">
-            {page > 1 && <a class="toggle" href={link({ page: String(page - 1) })}>‹ Prev</a>}
+            {page > 1 && <a class="toggle" href={link({ page: String(page - 1) })}>‹ Previous</a>}
             {page < pages && <a class="toggle" href={link({ page: String(page + 1) })}>Next ›</a>}
           </span>
         </p>
@@ -136,6 +154,15 @@ const link = (changes: Record<string, string>) => {
     </div>
   </div>
 </Layout>
+
+<script>
+  // On phones the subtopic list starts folded (its toggle names the chosen one), so the
+  // page title and bills come sooner.
+  const subs = document.querySelector<HTMLDetailsElement>("[data-subtopics]");
+  const phone = window.matchMedia("(max-width: 860px)");
+  if (subs && phone.matches) subs.open = false;
+  phone.addEventListener("change", () => subs && !phone.matches && (subs.open = true));
+</script>
 
 <style>
   .area {
@@ -145,25 +172,76 @@ const link = (changes: Record<string, string>) => {
     letter-spacing: -0.02em;
     color: var(--bright);
   }
+  /* The fold toggle only shows on narrow screens; wider ones always list the subtopics. */
+  .subs-box > summary {
+    display: none;
+  }
+  @media (max-width: 860px) {
+    .subs-box > summary {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 40px;
+      padding: 0 12px;
+      border: 1px solid var(--line-2);
+    }
+    .subs-title {
+      display: none;
+    }
+    /* One column: the area's name is the page title just above, so this panel shows only
+       its four numbers, side by side, before the subtopic fold. */
+    .about > .label,
+    .about > .area {
+      display: none;
+    }
+    .facts {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0 16px;
+    }
+    .facts > div {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+    }
+    .facts > div > :last-child {
+      text-align: left;
+    }
+    /* The breadcrumb right above already leads back to all topics. */
+    .back {
+      display: none;
+    }
+  }
+  @media (max-width: 520px) {
+    .facts {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
   .subs {
     list-style: none;
     margin: 10px 0 0;
     padding: 0;
   }
   .subs li {
-    padding: 6px 0 8px;
+    padding: 2px 0 8px;
   }
   .subs a {
     display: flex;
     justify-content: space-between;
     gap: 10px;
-    margin-bottom: 6px;
-    font-size: 0.86rem;
-    color: var(--muted);
+    margin: 0 -8px 4px;
+    padding: 6px 8px;
+    font-size: 0.94rem;
+    line-height: 1.35;
+    color: var(--soft);
+    transition: background 100ms ease;
+  }
+  .subs a:hover {
+    background: var(--raise);
   }
   .subs a span:last-child {
-    font: 0.7rem var(--mono);
-    color: var(--faint);
+    font: var(--fs-xs)/1.8 var(--mono);
+    color: var(--muted);
   }
   .subs a:hover,
   .subs a.on {
@@ -180,9 +258,34 @@ const link = (changes: Record<string, string>) => {
     display: flex;
     align-items: center;
     gap: 14px;
-    border-top: 1px solid var(--line);
   }
-  .queue :global(.table-scroll) {
-    max-height: 70vh;
+  /* Phones: the label sits above its buttons, so they wrap under each other, not under it. */
+  @media (max-width: 640px) {
+    .frow {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 8px;
+    }
+  }
+  /* Wide: the topic panel runs down the left; the title and then the list fill the right.
+     One column: title, then the topic's numbers and subtopics, then the list. */
+  .topic-grid {
+    grid-template-areas: "side head" "side list";
+    grid-template-rows: auto 1fr;
+  }
+  .topic-grid > :global(.topic-head) {
+    grid-area: head;
+  }
+  .topic-grid > .side {
+    grid-area: side;
+  }
+  .topic-grid > :global(.queue) {
+    grid-area: list;
+  }
+  @media (max-width: 860px) {
+    .topic-grid {
+      grid-template-areas: "head" "side" "list";
+      grid-template-rows: auto;
+    }
   }
 </style>

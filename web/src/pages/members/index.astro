@@ -1,5 +1,6 @@
 ---
 import Panel from "../../components/Panel.astro";
+import Term from "../../components/Term.astro";
 import Layout from "../../layouts/Layout.astro";
 import { memberStats, rows } from "../../lib/db";
 import { memberTag, partyClass, STATES } from "../../lib/format";
@@ -15,6 +16,7 @@ const byId = new Map(stats.map((s) => [s.id, s]));
 const count = (f: (m: (typeof members)[number]) => boolean) => members.filter(f).length;
 const states = [...new Set(members.map((m) => m.state).filter((s): s is string => !!s))].sort();
 const pct = (n: number | null | undefined) => (n === null || n === undefined ? "--" : `${n}%`);
+const UNITY_TIP = "On votes where most Democrats and most Republicans voted on opposite sides, how often this member voted with most of their own party. Independents are counted with Democrats.";
 const inspect = Object.fromEntries(
   members.map((m) => {
     const s = byId.get(m.bioguide_id);
@@ -23,50 +25,54 @@ const inspect = Object.fromEntries(
 );
 ---
 
-<Layout title="Members of Congress" crumbs={["Members", "Registry"]}>
+<Layout title="Members of Congress" crumbs={[{ label: "Members" }]}>
   <div class="console">
-    <div class="cols cols-3">
-      <Panel label="Filters">
+    <div class="cols members-grid">
+      <Panel label="Filters" class="filters-panel">
         <div class="panel-body filt">
-          <p class="label">Chamber</p>
-          <div class="toggles" data-group="chamber">
-            <button class="toggle active" type="button" data-v="">All {members.length}</button>
-            <button class="toggle" type="button" data-v="house">House {count((m) => m.chamber === "house")}</button>
-            <button class="toggle" type="button" data-v="senate">Senate {count((m) => m.chamber === "senate")}</button>
+          <details class="filter-set" open data-filters>
+          <summary>Filter by chamber, party, or state</summary>
+          <p class="label" id="f-chamber">Chamber</p>
+          <div class="toggles" data-group="chamber" role="group" aria-labelledby="f-chamber">
+            <button class="toggle active" type="button" data-v="" aria-pressed="true">Both <span class="cnt">{members.length}</span></button>
+            <button class="toggle" type="button" data-v="house" aria-pressed="false">House <span class="cnt">{count((m) => m.chamber === "house")}</span></button>
+            <button class="toggle" type="button" data-v="senate" aria-pressed="false">Senate <span class="cnt">{count((m) => m.chamber === "senate")}</span></button>
           </div>
-          <p class="label">Party</p>
-          <div class="toggles" data-group="party">
-            <button class="toggle active" type="button" data-v="">All</button>
-            <button class="toggle" type="button" data-v="D">Dem {count((m) => m.party === "D")}</button>
-            <button class="toggle" type="button" data-v="R">Rep {count((m) => m.party === "R")}</button>
-            <button class="toggle" type="button" data-v="I">Ind {count((m) => m.party !== "D" && m.party !== "R")}</button>
+          <p class="label" id="f-party">Party</p>
+          <div class="toggles" data-group="party" role="group" aria-labelledby="f-party">
+            <button class="toggle active" type="button" data-v="" aria-pressed="true">All</button>
+            <button class="toggle" type="button" data-v="D" aria-pressed="false">Democrats <span class="cnt">{count((m) => m.party === "D")}</span></button>
+            <button class="toggle" type="button" data-v="R" aria-pressed="false">Republicans <span class="cnt">{count((m) => m.party === "R")}</span></button>
+            <button class="toggle" type="button" data-v="I" aria-pressed="false">Independents <span class="cnt">{count((m) => m.party !== "D" && m.party !== "R")}</span></button>
           </div>
-          <p class="label">State</p>
-          <select data-group-select="state" aria-label="State">
+          <label class="label" for="f-state">State</label>
+          <select id="f-state" data-group-select="state">
             <option value="">All states</option>
             {states.map((s) => <option value={s}>{STATES[s] ?? s}</option>)}
           </select>
-          <a class="btn ghost locate" href="/find">Locate my reps ›</a>
+          </details>
+          <button class="toggle clear" type="button" data-clear hidden>Clear filters and search ×</button>
+          <a class="btn ghost locate" href="/find">Find my representatives →</a>
         </div>
       </Panel>
 
       <Panel class="registry">
         <div class="panel-body head">
           <div>
-            <h1 class="title">Member Registry</h1>
-            <p class="label"><span data-shown>{members.length}</span> of {members.length} members serving</p>
+            <h1 class="title">Members of Congress</h1>
+            <p class="label" aria-live="polite"><span data-shown>{members.length}</span> of {members.length} members serving</p>
           </div>
         </div>
         <div class="panel-body tools">
           <label class="command">
             <span class="prompt">&gt;</span>
-            <input type="search" placeholder="locate --member  (name or state)" data-search aria-label="Search members" />
+            <input type="search" placeholder="Search by name or state" data-search aria-label="Narrow the list by name or state" />
           </label>
         </div>
-        <div class="table-scroll">
-          <table class="rtable">
+        <div>
+          <table class="rtable members-table">
             <thead>
-              <tr><th></th><th>Member</th><th>Seat</th><th class="num">Party unity</th><th class="num">Missed</th><th class="num">Sponsored</th></tr>
+              <tr><th><span class="visually-hidden">Photo</span></th><th>Member</th><th>Seat</th><th class="num"><Term tip={UNITY_TIP}>Votes with party</Term></th><th class="num"><Term tip="Share of this Congress's recorded votes the member didn't vote in.">Missed</Term></th><th class="num">Bills sponsored</th></tr>
             </thead>
             <tbody>
               {
@@ -84,10 +90,10 @@ const inspect = Object.fromEntries(
                     >
                       <td class="thumb">{m.photo_url && <img src={m.photo_url} alt="" loading="lazy" decoding="async" />}</td>
                       <td><a href={`/members/${m.bioguide_id}`}>{m.full_name}</a></td>
-                      <td class="mono"><span class={`party ${partyClass(p)}`}>{memberTag(m)}</span> <span class="faint">{m.chamber === "senate" ? "SEN" : "REP"}</span></td>
-                      <td class="num">{pct(s?.party_unity_pct)}</td>
-                      <td class="num">{pct(s?.missed_pct)}</td>
-                      <td class="num">{s?.sponsored ?? 0}</td>
+                      <td class="mono"><span class={`party ${partyClass(p)}`}>{memberTag(m)}</span> <span class="faint">{m.chamber === "senate" ? "Senate" : "House"}</span></td>
+                      <td class="num" data-label="With party">{pct(s?.party_unity_pct)}</td>
+                      <td class="num" data-label="Missed">{pct(s?.missed_pct)}</td>
+                      <td class="num" data-label="Sponsored">{s?.sponsored ?? 0}</td>
                     </tr>
                   );
                 })
@@ -95,24 +101,36 @@ const inspect = Object.fromEntries(
             </tbody>
           </table>
         </div>
+        <div class="empty" data-none hidden>
+          <p>No members match. Check the spelling, try a state name, or clear a filter.</p>
+          <button class="toggle" type="button" data-clear>Clear filters and search</button>
+        </div>
+        {/* Without JavaScript every member is listed; with it, the list shows a page at a time. */}
+        <p class="pager" data-pager hidden>
+          <span data-range></span>
+          <span class="toggles">
+            <button class="toggle" type="button" data-prev>‹ Previous</button>
+            <button class="toggle" type="button" data-next>Next ›</button>
+          </span>
+        </p>
       </Panel>
 
-      <Panel label="Node_inspector" class="insp">
+      <Panel label="Member preview" class="insp">
         <div class="panel-body">
           <div class="viewfinder">
             <img alt="" hidden data-k="ph" />
             <span class="cross" aria-hidden="true"></span>
-            <span class="label nosignal" data-k="signal">No signal</span>
+            <span class="label nosignal" data-k="signal">No one selected</span>
           </div>
-          <p class="name" data-k="n">Awaiting target…</p>
+          <p class="name" data-k="n">Point at a member, or Tab to them, to preview them here</p>
           <p class="label" data-k="tag">--</p>
           <div class="rows-list">
-            <div><span>Party alignment</span><span data-k="u">--</span></div>
+            <div><span><Term tip={UNITY_TIP}>Votes with party</Term></span><span data-k="u">--</span></div>
             <div><span>Missed votes</span><span data-k="mi">--</span></div>
-            <div><span>Sponsored</span><span data-k="sp">--</span></div>
-            <div><span>Cosponsored</span><span data-k="co">--</span></div>
-            <div><span>Bipartisan bills</span><span data-k="b">--</span></div>
-            <div><span>Tenure</span><span data-k="t">--</span></div>
+            <div><span>Bills sponsored</span><span data-k="sp">--</span></div>
+            <div><span>Bills cosponsored</span><span data-k="co">--</span></div>
+            <div><span><Term tip="Of their bills with cosponsors, the share with at least one cosponsor from the other party.">Bipartisan bills</Term></span><span data-k="b">--</span></div>
+            <div><span>In Congress</span><span data-k="t">--</span></div>
           </div>
         </div>
       </Panel>
@@ -122,8 +140,6 @@ const inspect = Object.fromEntries(
 </Layout>
 
 <script>
-  import { scramble } from "../../scripts/fx";
-
   type M = { n: string; tag: string; c: string; ph: string | null; u: number | null; mi: number | null; sp: number; co: number; b: number | null; t: number; si: string | null };
   const data = JSON.parse(document.getElementById("member-data")?.textContent ?? "{}") as Record<string, M>;
   const rows = [...document.querySelectorAll<HTMLTableRowElement>("tbody tr[data-id]")];
@@ -131,26 +147,70 @@ const inspect = Object.fromEntries(
   const search = document.querySelector<HTMLInputElement>("[data-search]");
   const shown = document.querySelector("[data-shown]");
 
+  // The matching members show a page at a time (fewer on phones, where each is a card).
+  const PAGE = window.matchMedia("(max-width: 640px)").matches ? 25 : 50;
+  const pager = document.querySelector<HTMLElement>("[data-pager]");
+  const none = document.querySelector<HTMLElement>("[data-none]");
+  const prev = document.querySelector<HTMLButtonElement>("[data-prev]");
+  const next = document.querySelector<HTMLButtonElement>("[data-next]");
+  let matching = rows;
+  let page = 0;
+  const pageIn = (el: HTMLElement | null | undefined) => {
+    el?.classList.remove("page-in");
+    void el?.offsetWidth;
+    el?.classList.add("page-in");
+  };
+  const render = (scroll = false) => {
+    const pages = Math.max(1, Math.ceil(matching.length / PAGE));
+    page = Math.min(Math.max(page, 0), pages - 1);
+    rows.forEach((tr) => (tr.hidden = true));
+    matching.slice(page * PAGE, (page + 1) * PAGE).forEach((tr) => (tr.hidden = false));
+    if (none) none.hidden = matching.length > 0;
+    if (pager) {
+      pager.hidden = matching.length <= PAGE;
+      pager.querySelector("[data-range]")!.textContent = `Showing ${page * PAGE + 1}–${Math.min(matching.length, (page + 1) * PAGE)} of ${matching.length}`;
+      if (prev) prev.disabled = page === 0;
+      if (next) next.disabled = page >= pages - 1;
+    }
+    // A new page starts at the top of the list, not wherever the old one was scrolled to,
+    // and its rows fade in briefly so the change registers.
+    const top = document.querySelector(".registry");
+    if (scroll && top && top.getBoundingClientRect().top < 0) top.scrollIntoView({ block: "start" });
+    if (scroll) pageIn(rows[0]?.parentElement);
+  };
+  const clears = document.querySelectorAll<HTMLButtonElement>("[data-clear]");
+  const filterClear = document.querySelector<HTMLButtonElement>(".clear[data-clear]");
   const apply = () => {
     const q = (search?.value ?? "").trim().toLowerCase();
-    let n = 0;
-    for (const tr of rows) {
-      const ok =
+    if (filterClear) filterClear.hidden = !q && !filters.chamber && !filters.party && !filters.state;
+    matching = rows.filter(
+      (tr) =>
         (!filters.chamber || tr.dataset.chamber === filters.chamber) &&
         (!filters.party || tr.dataset.party === filters.party) &&
         (!filters.state || tr.dataset.state === filters.state) &&
-        (!q || tr.dataset.q!.includes(q));
-      tr.hidden = !ok;
-      if (ok) n++;
-    }
-    if (shown) shown.textContent = String(n);
+        (!q || tr.dataset.q!.includes(q)),
+    );
+    if (shown) shown.textContent = String(matching.length);
+    page = 0;
+    render();
   };
+  prev?.addEventListener("click", () => {
+    page -= 1;
+    render(true);
+  });
+  next?.addEventListener("click", () => {
+    page += 1;
+    render(true);
+  });
   document.querySelectorAll<HTMLElement>("[data-group]").forEach((group) => {
     const buttons = group.querySelectorAll<HTMLButtonElement>("button");
     buttons.forEach((b) =>
       b.addEventListener("click", () => {
         filters[group.dataset.group!] = b.dataset.v ?? "";
-        buttons.forEach((x) => x.classList.toggle("active", x === b));
+        buttons.forEach((x) => {
+          x.classList.toggle("active", x === b);
+          x.setAttribute("aria-pressed", String(x === b));
+        });
         apply();
       }),
     );
@@ -162,29 +222,67 @@ const inspect = Object.fromEntries(
     apply();
   });
   search?.addEventListener("input", apply);
+  // Clear puts every filter back to "all" and empties the search.
+  clears.forEach((c) =>
+    c.addEventListener("click", () => {
+      document.querySelectorAll<HTMLElement>("[data-group]").forEach((group) => group.querySelector<HTMLButtonElement>("button[data-v='']")?.click());
+      if (stateSelect) stateSelect.value = "";
+      filters.state = "";
+      if (search) search.value = "";
+      apply();
+      search?.focus();
+    }),
+  );
+  apply();
 
+  // On phones the filters start folded, so the search box and the list come first.
+  const filterSet = document.querySelector<HTMLDetailsElement>("[data-filters]");
+  const phone = window.matchMedia("(max-width: 640px)");
+  if (filterSet && phone.matches) filterSet.open = false;
+  phone.addEventListener("change", () => filterSet && !phone.matches && (filterSet.open = true));
+
+  // The preview's text changes at once (no decoding, so moving down the list stays calm).
+  // A new portrait fades in once it has loaded; the old one dims meanwhile, so a face never
+  // sits under the wrong name.
   const k = (key: string) => document.querySelector<HTMLElement>(`[data-k="${key}"]`)!;
+  const img = k("ph") as HTMLImageElement;
+  img.addEventListener("load", () => img.classList.remove("loading"));
+  img.addEventListener("error", () => {
+    img.classList.remove("loading");
+    img.hidden = true;
+    k("signal").hidden = false;
+  });
   let current = "";
   const show = (id: string) => {
     const m = data[id];
     if (!m || id === current) return;
     current = id;
-    scramble(k("n"), m.n.toUpperCase(), 360);
-    scramble(k("tag"), `${m.c === "senate" ? "Senator" : "Representative"} · ${m.tag}`, 320);
-    scramble(k("u"), m.u === null ? "--" : `${m.u}%`, 280);
-    scramble(k("mi"), m.mi === null ? "--" : `${m.mi}%`, 280);
-    scramble(k("sp"), `${m.sp} bills`, 280);
-    scramble(k("co"), `${m.co} bills`, 280);
-    scramble(k("b"), m.b === null ? "--" : `${m.b}%`, 280);
-    scramble(k("t"), m.t ? `${m.t} terms · since ${m.si}` : "--", 280);
-    const img = k("ph") as HTMLImageElement;
+    k("n").textContent = m.n;
+    k("tag").textContent = `${m.c === "senate" ? "Senator" : "Representative"} · ${m.tag}`;
+    k("u").textContent = m.u === null ? "--" : `${m.u}%`;
+    k("mi").textContent = m.mi === null ? "--" : `${m.mi}%`;
+    k("sp").textContent = String(m.sp);
+    k("co").textContent = String(m.co);
+    k("b").textContent = m.b === null ? "--" : `${m.b}%`;
+    k("t").textContent = m.t ? `Since ${m.si} · ${m.t} term${m.t === 1 ? "" : "s"}` : "--";
+    // Once someone is selected, an empty frame means they have no photo on file.
+    k("signal").textContent = "No photo";
     k("signal").hidden = Boolean(m.ph);
-    if (m.ph) {
-      img.src = m.ph;
-      img.hidden = false;
-    } else img.hidden = true;
+    if (!m.ph) {
+      img.hidden = true;
+      return;
+    }
+    const next = new URL(m.ph, location.href).href;
+    if (img.src !== next) {
+      img.classList.add("loading");
+      img.src = next;
+    }
+    img.hidden = false;
   };
-  rows.forEach((tr) => tr.addEventListener("mouseenter", () => show(tr.dataset.id!)));
+  rows.forEach((tr) => {
+    tr.addEventListener("mouseenter", () => show(tr.dataset.id!));
+    tr.addEventListener("focusin", () => show(tr.dataset.id!));
+  });
 </script>
 
 <style>
@@ -192,13 +290,45 @@ const inspect = Object.fromEntries(
     display: grid;
     gap: 10px;
   }
-  .filt .label {
-    margin-top: 8px;
+  .filter-set > * + * {
+    margin-top: 10px;
+  }
+  .filter-set > .label {
+    display: block;
+    margin-top: 18px;
+  }
+  .filter-set > summary + .label {
+    margin-top: 0;
+  }
+  /* The "Filter by…" toggle only shows on phones; wider screens always show the filters. */
+  .filter-set > summary {
+    display: none;
+  }
+  .members-table th:nth-child(2) {
+    width: 34%;
+  }
+  /* Column headings may wrap ("Votes with / party"), so the table fits beside the filters
+     on laptops and tablets instead of spilling out of its panel. */
+  .members-table th {
+    white-space: normal;
+    vertical-align: bottom;
+  }
+  /* "R-AK-AL House": the chamber may drop under the seat when the column is narrow. */
+  .members-table td:nth-child(3) {
+    white-space: normal;
   }
   .locate {
     margin-top: 14px;
     justify-content: center;
   }
+  .clear {
+    justify-self: start;
+  }
+  .cnt {
+    font: 400 var(--fs-xs) var(--mono);
+    opacity: 0.75;
+  }
+
   .title {
     font-size: clamp(1.8rem, 1.4rem + 1.2vw, 2.4rem);
     margin-bottom: 6px;
@@ -206,8 +336,12 @@ const inspect = Object.fromEntries(
   .tools {
     border-top: 1px solid var(--line);
   }
-  .registry :global(.table-scroll) {
-    max-height: 70vh;
+  /* Filters and the preview stay in view while the list scrolls with the page. */
+  @media (min-width: 861px) and (min-height: 700px) {
+    .members-grid > :global(.panel:not(.registry)) {
+      position: sticky;
+      top: calc(var(--bar) + var(--gap));
+    }
   }
   .thumb {
     width: 44px;
@@ -240,6 +374,18 @@ const inspect = Object.fromEntries(
     height: 100%;
     object-fit: cover;
     filter: grayscale(1) contrast(1.08);
+    transition: opacity 140ms ease;
+  }
+  .viewfinder img.loading {
+    opacity: 0.25;
+  }
+  :global(.fx) tbody.page-in {
+    animation: page-in 180ms ease-out;
+  }
+  @keyframes page-in {
+    from {
+      opacity: 0.15;
+    }
   }
   .cross {
     position: absolute;
@@ -261,9 +407,80 @@ const inspect = Object.fromEntries(
     font: 500 1.1rem/1.2 var(--font);
     color: var(--bright);
   }
-  @media (max-width: 1100px) {
+  .members-grid {
+    grid-template-columns: minmax(240px, 280px) minmax(0, 1fr) minmax(280px, 340px);
+  }
+  /* Narrower screens drop the hover preview but always keep the filters: below about
+     1320px the list's six columns don't fit between the two side panels. */
+  @media (max-width: 1320px) {
+    .members-grid {
+      grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+    }
     .insp {
       display: none;
+    }
+  }
+  @media (max-width: 860px) {
+    .members-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+  /* Phones: each member is a card (photo, name, seat, then three labelled numbers) instead
+     of a six-column table that scrolls sideways. */
+  @media (max-width: 640px) {
+    .filters-panel :global(.panel-head) {
+      display: none;
+    }
+    .filter-set > summary {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 44px;
+      padding: 0 12px;
+      border: 1px solid var(--line-2);
+    }
+    .filter-set > summary + .label {
+      margin-top: 14px;
+    }
+    .locate {
+      margin-top: 0;
+    }
+    .members-table thead {
+      display: none;
+    }
+    .members-table tbody tr {
+      display: grid;
+      grid-template-columns: 40px repeat(3, minmax(0, 1fr));
+      gap: 2px 12px;
+      padding: 12px var(--pad);
+      border-bottom: 1px solid var(--line);
+    }
+    .members-table td {
+      padding: 0;
+      border: 0;
+    }
+    .members-table td.thumb {
+      grid-row: 1 / span 3;
+      width: auto;
+    }
+    .members-table td:nth-child(2),
+    .members-table td:nth-child(3) {
+      grid-column: 2 / -1;
+    }
+    .members-table td:nth-child(2) {
+      font-size: 1.05rem;
+      color: var(--bright);
+    }
+    .members-table td.num {
+      margin-top: 6px;
+      text-align: left;
+      color: var(--bright);
+    }
+    .members-table td.num::before {
+      content: attr(data-label);
+      display: block;
+      font: 400 var(--fs-xs)/1.4 var(--font);
+      color: var(--muted);
     }
   }
 </style>

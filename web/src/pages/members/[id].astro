@@ -2,10 +2,11 @@
 import Panel from "../../components/Panel.astro";
 import SegBar from "../../components/SegBar.astro";
 import StatusTag from "../../components/StatusTag.astro";
+import Term from "../../components/Term.astro";
 import Layout from "../../layouts/Layout.astro";
 import { memberStats, row, rows, type Member } from "../../lib/db";
-import { billNumber, billNumberFromId, consoleDate, memberTag, partyClass, PARTY, POSITION_LABELS, STATES } from "../../lib/format";
-import { CATEGORY_SQL } from "../../lib/votes";
+import { billNumber, consoleDate, memberTag, partyClass, PARTY, POSITION_LABELS, STATES } from "../../lib/format";
+import { CATEGORY_SQL, voteRef } from "../../lib/votes";
 
 const id = Astro.params.id ?? "";
 const m = await row<Member>("SELECT * FROM members WHERE bioguide_id = ?", id);
@@ -45,19 +46,21 @@ const pages = Math.max(1, Math.ceil((voteCount?.n ?? 0) / PAGE));
 const tone = party === "D" ? "dem" : party === "R" ? "rep" : "ind";
 // DW-NOMINATE first dimension runs from -1 (most liberal) to +1 (most conservative).
 const nominate = m.nominate_dim1;
-const qs = (p: number, passage = passageOnly) => `?${new URLSearchParams({ ...(p > 1 ? { page: String(p) } : {}), ...(passage ? { votes: "passage" } : {}) })}`;
+// Links that page or filter the voting record reload the page, so they name its tab (#record).
+const qs = (p: number, passage = passageOnly) => `?${new URLSearchParams({ ...(p > 1 ? { page: String(p) } : {}), ...(passage ? { votes: "passage" } : {}) })}#record`;
+const stateName = m.state ? (STATES[m.state] ?? m.state) : null;
 ---
 
-<Layout title={`${m.full_name}${m.state ? ` (${memberTag(m)})` : ""}`} crumbs={["Members", m.full_name]}>
+<Layout title={`${m.full_name}${m.state ? ` (${memberTag(m)})` : ""}`} crumbs={[{ label: "Members", href: "/members" }, ...(m.state ? [{ label: STATES[m.state] ?? m.state, href: `/find?state=${m.state}` }] : []), { label: m.full_name }]}>
   <div class="console">
     <div class="cols cols-side">
-      <div class="stack">
-        <Panel label="Node_profile" code={m.bioguide_id}>
+      <div class="stack side">
+        <Panel label="Profile" class="profile">
           <div class="panel-body">
             <div class="viewfinder">
               {m.photo_url && <img src={m.photo_url} alt={`Official portrait of ${m.full_name}`} />}
               <span class="cross" aria-hidden="true"></span>
-              <span class="label corner">{m.in_office ? "Signal: active" : "Signal: archived"}</span>
+              <span class="label corner">{m.in_office ? "Serving now" : "No longer serving"}</span>
             </div>
           </div>
           <div class="panel-body rows-list">
@@ -67,126 +70,158 @@ const qs = (p: number, passage = passageOnly) => `?${new URLSearchParams({ ...(p
             {m.contact_form && <div><span>Contact form</span><span><a href={m.contact_form} target="_blank" rel="noopener">Open ↗</a></span></div>}
             <div><span>Term</span><span>{consoleDate(m.term_start)} → {consoleDate(m.term_end)}</span></div>
           </div>
-        </Panel>
-
-        <Panel label="Service_history" code={`${terms.length} TERMS`}>
-          <div class="panel-body rows-list">
-            {
-              terms.map((t) => (
-                <div>
-                  <span>{t.chamber === "senate" ? "Senate" : `House ${t.state}-${t.district === 0 ? "AL" : t.district}`}</span>
-                  <span>{t.start_date.slice(0, 4)}–{(t.end_date ?? "").slice(0, 4)} · {t.party}</span>
-                </div>
-              ))
-            }
-          </div>
+          {
+            stateName && (
+              <div class="panel-body">
+                <a class="btn ghost state-link" href={`/find?state=${m.state}`}>All members from {stateName} →</a>
+              </div>
+            )
+          }
         </Panel>
       </div>
 
       <div class="stack">
         <Panel>
           <div class="panel-body head">
-            <p class="label"><span data-scramble>{seat}</span> <span class="faint">//</span> <span class={`party ${partyClass(party)}`}>{PARTY[party]?.name ?? party}</span></p>
+            <p class="label"><span data-scramble>{seat}</span> <span class="faint">·</span> <span class={`party ${partyClass(party)}`}>{PARTY[party]?.name ?? party}</span></p>
             <h1 class="cursor"><span data-scramble>{m.full_name}</span></h1>
-            {!m.in_office && <p class="label alert">No longer serving · record archived</p>}
+            {!m.in_office && <p class="label alert">No longer serving · showing their past record</p>}
           </div>
           <div class="panel-body metrics">
             <div class="metric">
-              <div class="mh"><span class="label">Party alignment</span><span class="mv" data-count={s?.party_unity_pct ?? 0} data-decimals="1" data-suffix="%">{s?.party_unity_pct ?? "--"}%</span></div>
+              <div class="mh"><span class="label"><Term tip="On votes where most Democrats and most Republicans voted on opposite sides, how often this member voted with most of their own party.">Votes with their party</Term></span><span class="mv" data-count={s?.party_unity_pct ?? 0} data-decimals="1" data-suffix="%">{s?.party_unity_pct ?? "--"}%</span></div>
               <SegBar value={s?.party_unity_pct ?? 0} max={100} cells={40} tone={tone} />
-              <p class="label faint">On {s?.unity_votes ?? 0} votes where the parties split{party === "I" && " · counted with Democrats, with whom they caucus"}</p>
+              <p class="note">On {s?.unity_votes ?? 0} votes where the parties split{party === "I" && " · counted with Democrats, with whom they caucus"}</p>
             </div>
             <div class="metric">
               <div class="mh"><span class="label">Attendance</span><span class="mv" data-count={s?.missed_pct === null || s?.missed_pct === undefined ? 0 : 100 - s.missed_pct} data-decimals="1" data-suffix="%">{s?.missed_pct === null || s?.missed_pct === undefined ? "--" : 100 - s.missed_pct}%</span></div>
               <SegBar value={s?.missed_pct === null || s?.missed_pct === undefined ? 0 : 100 - s.missed_pct} max={100} cells={40} tone="bright" />
-              <p class="label faint">Voted on {(s?.votes ?? 0).toLocaleString("en-US")} roll calls this Congress</p>
+              <p class="note">Voted in {(s?.votes ?? 0).toLocaleString("en-US")} recorded votes this Congress</p>
             </div>
             <div class="metric">
               <div class="mh"><span class="label">Bipartisan bills</span><span class="mv" data-count={s?.bipartisan_pct ?? 0} data-decimals="1" data-suffix="%">{s?.bipartisan_pct ?? "--"}%</span></div>
               <SegBar value={s?.bipartisan_pct ?? 0} max={100} cells={40} tone="dim" />
-              <p class="label faint">Of their bills with cosponsors, the share with one from the other party</p>
+              <p class="note">Of their bills with cosponsors, the share with one from the other party</p>
             </div>
           </div>
           <div class="cols cols-4 boxes panel-body">
-            <div class="statbox"><div class="label">Sponsored</div><div class="value" data-count={s?.sponsored ?? 0}>{s?.sponsored ?? 0}</div></div>
-            <div class="statbox"><div class="label">Cosponsored</div><div class="value" data-count={s?.cosponsored ?? 0}>{s?.cosponsored ?? 0}</div></div>
+            <div class="statbox"><div class="label">Bills sponsored</div><div class="value" data-count={s?.sponsored ?? 0}>{s?.sponsored ?? 0}</div></div>
+            <div class="statbox"><div class="label">Bills cosponsored</div><div class="value" data-count={s?.cosponsored ?? 0}>{s?.cosponsored ?? 0}</div></div>
             <div class="statbox"><div class="label">Terms served</div><div class="value" data-count={s?.terms ?? 0}>{s?.terms ?? 0}</div></div>
             <div class="statbox"><div class="label">Serving since</div><div class="value">{s?.since ?? "--"}</div></div>
           </div>
-          {
-            nominate !== null && (
-              <div class="panel-body">
-                <div class="mh"><span class="label">Voting-pattern scale · DW-NOMINATE</span><span class="label">{nominate.toFixed(3)}</span></div>
-                <div class="scale" style={`--x:${((nominate + 1) / 2) * 100}%`}>
-                  <span class="mark" />
-                </div>
-                <div class="scale-ends label"><span>-1 · Liberal</span><span>0</span><span>Conservative · +1</span></div>
-                <p class="label faint">An academic measure from Voteview (UCLA), estimated from every recorded vote.</p>
-              </div>
-            )
-          }
         </Panel>
 
-        <Panel label="Voting_record" code={`${(voteCount?.n ?? 0).toLocaleString("en-US")} RECORDS`}>
-          <div class="panel-body tools">
-            <div class="toggles">
-              <a class:list={["toggle", !passageOnly && "active"]} href={qs(1, false)}>All votes</a>
-              <a class:list={["toggle", passageOnly && "active"]} href={qs(1, true)}>Passage votes</a>
+        <Panel class="record-panel">
+          <div data-tabs>
+            <div class="tabbar">
+              <a class="tab-link" href="#record" aria-selected="true">Votes <span class="n">{(voteCount?.n ?? 0).toLocaleString("en-US")}</span></a>
+              <a class="tab-link" href="#sponsored">Sponsored bills <span class="n">{s?.sponsored ?? sponsored.length}</span></a>
+              <a class="tab-link" href="#background">Background</a>
             </div>
-          </div>
-          {
-            votes.length ? (
-              <div class="table-scroll">
-                <table class="rtable">
-                  <thead><tr><th>Date</th><th>Measure</th><th>Question</th><th>Result</th><th class="num">Vote</th></tr></thead>
-                  <tbody>
-                    {votes.map((v) => (
-                      <tr data-href={`/votes/${v.id}`}>
-                        <td class="mono">{consoleDate(v.vote_date)}</td>
-                        <td><a class="tag" href={`/votes/${v.id}`}>{v.bill_id ? billNumberFromId(v.bill_id) : (v.subject_ref ?? `ROLL ${v.roll_number}`)}</a></td>
-                        <td class="subject">{v.bill_title ?? v.description ?? v.question}</td>
-                        <td class="mono">{v.result}</td>
-                        <td class="num"><span class={`status-tag ${v.position === "yea" ? "ok" : v.position === "nay" ? "alert" : "neutral"}`}>{v.position === "other" ? v.detail : POSITION_LABELS[v.position]}</span></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p class="empty">No recorded votes</p>
-            )
-          }
-          <p class="pager">
-            <span>Page {page} / {pages}</span>
-            <span class="toggles">
-              {page > 1 && <a class="toggle" href={qs(page - 1)}>‹ Prev</a>}
-              {page < pages && <a class="toggle" href={qs(page + 1)}>Next ›</a>}
-            </span>
-          </p>
-        </Panel>
 
-        <Panel label="Sponsored_measures" code={`${s?.sponsored ?? sponsored.length} TOTAL`}>
-          {
-            sponsored.length ? (
-              <div class="table-scroll">
-                <table class="rtable">
-                  <thead><tr><th>Measure</th><th>Subject</th><th>Status</th><th>Last action</th></tr></thead>
-                  <tbody>
+            <section class="tab-pane" id="record">
+              <header class="pane-head">
+                <h2>How they voted</h2>
+                <div class="toggles">
+                  <a class:list={["toggle", !passageOnly && "active"]} aria-current={!passageOnly ? "true" : undefined} href={qs(1, false)}>All votes</a>
+                  <a class:list={["toggle", passageOnly && "active"]} aria-current={passageOnly ? "true" : undefined} href={qs(1, true)} title="Only the final votes to pass a bill or resolution, without amendments and procedural votes">Only votes to pass bills</a>
+                </div>
+              </header>
+              {
+                votes.length ? (
+                  <div class="table-scroll">
+                    <table class="rtable cards record-table">
+                      <thead><tr><th>Date</th><th>Bill or item</th><th>What it was about</th><th class="num">Their vote</th></tr></thead>
+                      <tbody>
+                        {votes.map((v) => (
+                          <tr data-href={`/votes/${v.id}`}>
+                            <td class="mono">{consoleDate(v.vote_date)}</td>
+                            <td><a class="tag" href={`/votes/${v.id}`}>{voteRef(v)}</a></td>
+                            <td class="subject">
+                              <span class="clamp-2">{v.bill_title ?? v.description ?? v.question}</span>
+                              {(v.result || v.vote_date) && (
+                                <span class="res">
+                                  <span class="res-date">{consoleDate(v.vote_date)}{v.result && " · "}</span>
+                                  {v.result}
+                                </span>
+                              )}
+                            </td>
+                            <td class="num"><span class={`status-tag ${v.position === "yea" ? "ok" : v.position === "nay" ? "alert" : "neutral"}`}>{v.position === "other" ? v.detail : POSITION_LABELS[v.position]}</span></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p class="empty">{passageOnly ? "No votes to pass bills on record for this member." : "No recorded votes for this member in this Congress."}</p>
+                )
+              }
+              <p class="pager">
+                <span>Page {page} of {pages}</span>
+                <span class="toggles">
+                  {page > 1 && <a class="toggle" href={qs(page - 1)}>‹ Newer</a>}
+                  {page < pages && <a class="toggle" href={qs(page + 1)}>Older ›</a>}
+                </span>
+              </p>
+            </section>
+
+            <section class="tab-pane" id="sponsored">
+              <header class="pane-head">
+                <h2>Bills they sponsored</h2>
+                <p>{sponsored.length < (s?.sponsored ?? 0) ? `The ${sponsored.length} with the most recent action, of ${s?.sponsored} this Congress` : "This Congress, most recent action first"}</p>
+              </header>
+              {
+                sponsored.length ? (
+                  <ol class="reclist">
                     {sponsored.map((b) => (
-                      <tr data-href={`/bills/${b.id}`}>
-                        <td><a class="tag" href={`/bills/${b.id}`}>{billNumber(b.bill_type, b.number)}</a></td>
-                        <td class="subject">{b.title}</td>
-                        <td><StatusTag status={b.status} /></td>
-                        <td class="mono">{consoleDate(b.latest_action_date)}</td>
-                      </tr>
+                      <li>
+                        <a href={`/bills/${b.id}`}>
+                          <span class="tag">{billNumber(b.bill_type, b.number)}</span>
+                          <span class="rl-title">{b.title}</span>
+                          <span class="rl-meta"><StatusTag status={b.status} /><span>{consoleDate(b.latest_action_date)}</span></span>
+                        </a>
+                      </li>
                     ))}
-                  </tbody>
-                </table>
+                  </ol>
+                ) : (
+                  <p class="empty">No sponsored bills this Congress</p>
+                )
+              }
+            </section>
+
+            <section class="tab-pane" id="background">
+              <header class="pane-head">
+                <h2>Background</h2>
+                <p>Time in office and where their voting record sits.</p>
+              </header>
+              <div class="bg-grid">
+                <div class="panel-body">
+                  <p class="label list-title">Time in office · {terms.length} {terms.length === 1 ? "term" : "terms"}</p>
+                  <div class="rows-list">
+                    {terms.map((t) => (
+                      <div>
+                        <span>{t.chamber === "senate" ? "Senate" : `House ${t.state}-${t.district === 0 ? "AL" : t.district}`}</span>
+                        <span>{t.start_date.slice(0, 4)}–{(t.end_date ?? "").slice(0, 4)} · {t.party}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {
+                  nominate !== null && (
+                    <div class="panel-body">
+                      <div class="mh"><span class="label"><Term tip="DW-NOMINATE is a score political scientists compute from every recorded vote a member has cast. It places members on a line from −1 (most liberal) to +1 (most conservative) by how they actually vote, not by what they say.">Voting-pattern score (DW-NOMINATE)</Term></span><span class="label">{nominate.toFixed(3)}</span></div>
+                      <div class="scale" style={`--x:${((nominate + 1) / 2) * 100}%`}>
+                        <span class="mark" />
+                      </div>
+                      <div class="scale-ends label"><span>−1 · Liberal</span><span>0</span><span>Conservative · +1</span></div>
+                      <p class="note">From Voteview at UCLA. Members who vote alike sit close together on this line.</p>
+                    </div>
+                  )
+                }
               </div>
-            ) : (
-              <p class="empty">No sponsored measures this Congress</p>
-            )
-          }
+            </section>
+          </div>
         </Panel>
       </div>
     </div>
@@ -213,7 +248,7 @@ const qs = (p: number, passage = passageOnly) => `?${new URLSearchParams({ ...(p
     filter: grayscale(1) contrast(1.08);
   }
   :global(.fx) .viewfinder img {
-    animation: acquire 700ms ease-out both 250ms;
+    animation: acquire calc(480ms * var(--fx-pace)) ease-out both calc(var(--fx-start) - 80ms);
   }
   @keyframes acquire {
     from {
@@ -235,7 +270,9 @@ const qs = (p: number, passage = passageOnly) => `?${new URLSearchParams({ ...(p
   .corner {
     position: absolute;
     left: 8px;
-    bottom: 6px;
+    bottom: 8px;
+    padding: 3px 7px;
+    background: rgb(5 5 5 / 82%);
     color: var(--ok);
   }
   .addr {
@@ -259,8 +296,44 @@ const qs = (p: number, passage = passageOnly) => `?${new URLSearchParams({ ...(p
     font: 300 2rem/1 var(--mono);
     color: var(--bright);
   }
-  .metric .label.faint {
+  .metric .note {
     margin: 8px 0 0;
+  }
+  /* The official result ("Cloture Motion Agreed to") sits under the title it belongs to,
+     instead of in a narrow column of its own that wrapped to four lines and squeezed titles. */
+  .res {
+    display: block;
+    margin-top: 3px;
+    color: var(--muted);
+    font-size: var(--fs-sm);
+    line-height: 1.35;
+  }
+  /* The date has its own column on wide screens and on phone cards. In between, it moves
+     under the title beside the result, so the title gets the column's width. */
+  .res-date {
+    display: none;
+  }
+  @media (max-width: 1100px) and (min-width: 641px) {
+    .record-table th:first-child,
+    .record-table td:first-child {
+      display: none;
+    }
+    .res-date {
+      display: inline;
+    }
+  }
+  @media (max-width: 640px) {
+    .record-table td.subject {
+      display: block;
+    }
+  }
+  /* The profile stays in view beside the long voting record (when the window is tall
+     enough to show all of it). */
+  @media (min-width: 861px) and (min-height: 900px) {
+    .side {
+      position: sticky;
+      top: calc(var(--bar) + var(--gap));
+    }
   }
   .boxes {
     gap: 12px;
@@ -288,7 +361,58 @@ const qs = (p: number, passage = passageOnly) => `?${new URLSearchParams({ ...(p
     justify-content: space-between;
     margin: 6px 0 8px;
   }
-  .tools {
-    border-bottom: 1px solid var(--line);
+  .state-link {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .list-title {
+    margin: 0 0 8px;
+  }
+  .bg-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  }
+  .bg-grid > .panel-body + .panel-body {
+    border-top: 0;
+    border-left: 1px solid var(--line);
+  }
+  @media (max-width: 860px) {
+    .bg-grid > .panel-body + .panel-body {
+      border-left: 0;
+      border-top: 1px solid var(--line);
+    }
+    /* One column: name and numbers, then photo and contact details, then the record. */
+    .cols-side > .stack:last-child {
+      display: contents;
+    }
+    .cols-side > .stack:first-child {
+      order: 1;
+    }
+    .cols-side :global(.record-panel) {
+      order: 2;
+    }
+    .viewfinder {
+      max-width: 200px;
+    }
+  }
+  /* Tablets: the portrait sits beside the contact details instead of above them. */
+  @media (max-width: 860px) and (min-width: 521px) {
+    .profile :global(.panel-frame) {
+      display: grid;
+      grid-template-columns: 180px minmax(0, 1fr);
+    }
+    .profile :global(.panel-head),
+    .profile .panel-body:last-child {
+      grid-column: 1 / -1;
+    }
+    .profile .panel-body + .panel-body.rows-list {
+      border-top: 0;
+      border-left: 1px solid var(--line);
+    }
+  }
+  @media (max-width: 520px) {
+    .viewfinder {
+      max-width: 160px;
+    }
   }
 </style>

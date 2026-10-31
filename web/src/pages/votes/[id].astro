@@ -1,11 +1,13 @@
 ---
 import Panel from "../../components/Panel.astro";
+import TallyBar from "../../components/TallyBar.astro";
+import Term from "../../components/Term.astro";
 import Terminal from "../../components/Terminal.astro";
 import VoteVisualizer from "../../components/VoteVisualizer.astro";
 import Layout from "../../layouts/Layout.astro";
 import { memberStats, memberVotes, row, rows, type RollCall } from "../../lib/db";
-import { billNumberFromId, consoleDate } from "../../lib/format";
-import { passed, seatInfo, threshold } from "../../lib/votes";
+import { billNumberFromId, consoleDate, CONGRESS } from "../../lib/format";
+import { explainQuestion, passed, ruleInfo, seatInfo, threshold } from "../../lib/votes";
 
 const id = Astro.params.id ?? "";
 const r = await row<RollCall>("SELECT * FROM roll_calls WHERE id = ?", id);
@@ -28,30 +30,31 @@ const chamberName = r.chamber === "senate" ? "Senate" : "House";
 const t = threshold(r);
 const ok = passed(r);
 const diff = r.yea - r.nay;
-const voting = r.yea + r.nay;
 const passMargin = r.yea - t.needed;
 const maxSide = Math.max(1, ...session.map((s) => Math.max(s.yea, s.nay)));
 const W = 1000;
 const step = W / Math.max(session.length, 1);
-const sessionLabel = `${r.congress}-${r.session}`;
+// Each Congress meets in two yearly sessions; the 119th's first is 2025.
+const year = 1789 + 2 * (r.congress - 1) + (r.session - 1);
+const rule = ruleInfo(t);
+const explained = explainQuestion(r.question, r.subject_ref?.startsWith("PN"));
+// The log under the chart: how to read it and where the record comes from (the vote's number
+// and date are already in the title above).
 const lines = [
-  { text: "Establishing link to roll call archive…" },
-  { text: `Loading ${chamberName.toUpperCase()} roll ${r.roll_number} (${sessionLabel})…` },
-  { text: `Mapping ${votes.length} member nodes…` },
-  { text: r.source === "voteview" ? "Source: Voteview (UCLA) · Senate record" : "Source: Office of the Clerk · House record", tone: "bright" as const },
-  { text: "NODE_MAPPING_READY", tone: "ok" as const },
+  { text: `${votes.length} members shown in their seats, grouped by party` },
+  { text: r.source === "voteview" ? "Source: Voteview (UCLA), from the Senate's record" : "Source: Office of the Clerk of the House", tone: "bright" as const },
+  { text: "Each dot is one member: filled voted yes, hollow voted no", tone: "ok" as const },
 ];
 ---
 
-<Layout title={`${chamberName} roll ${r.roll_number}: ${bill?.title ?? r.question ?? ""}`} crumbs={["Votes", `${chamberName} · Roll ${r.roll_number}`]}>
+<Layout title={`${chamberName} vote ${r.roll_number}: ${bill?.title ?? r.description ?? r.question ?? ""}`} crumbs={[{ label: "Votes", href: "/votes" }, { label: `${chamberName} vote ${r.roll_number}` }]}>
   <div class="console">
     <Panel class="strip-panel" plain>
       <div class="strip-head label">
-        <span>Yea margin (top)</span>
-        <span class="faint">{chamberName} · session {sessionLabel} · {session.length} roll calls</span>
-        <span>Nay margin (bottom)</span>
+        <span>Every {chamberName} vote in {year} · {session.length} in all</span>
+        <span class="strip-hint">Yes votes above the line, no votes below. Click a bar to open that vote.</span>
       </div>
-      <svg class="strip" viewBox={`0 0 ${W} 64`} preserveAspectRatio="none" role="img" aria-label="Margins of every vote in this session">
+      <svg class="strip" viewBox={`0 0 ${W} 64`} preserveAspectRatio="none" role="group" aria-label={`Yes and no totals of every ${chamberName} vote in ${year}. Use the arrow keys to move between votes.`}>
         {
           session.map((s, i) => {
             const up = (s.yea / maxSide) * 30;
@@ -59,10 +62,11 @@ const lines = [
             return (
               <a href={`/votes/${s.id}`} class={s.id === r.id ? "here" : undefined}>
                 <title>
-                  Roll {s.roll_number} · {consoleDate(s.vote_date)} · {s.yea}–{s.nay} · {s.question}
+                  Vote {s.roll_number} · {consoleDate(s.vote_date)} · {s.yea}–{s.nay} · {s.question}
                 </title>
-                <rect x={(i * step).toFixed(2)} y={(32 - up).toFixed(2)} width={Math.max(step - 1, 0.6).toFixed(2)} height={up.toFixed(2)} class="up" style={`--k:${i}`} />
-                <rect x={(i * step).toFixed(2)} y="33" width={Math.max(step - 1, 0.6).toFixed(2)} height={down.toFixed(2)} class="down" style={`--k:${i}`} />
+                <rect x={(i * step).toFixed(2)} y="0" width={step.toFixed(2)} height="64" class="hit" />
+                <rect x={(i * step).toFixed(2)} y={(32 - up).toFixed(2)} width={Math.max(step - 1, 0.6).toFixed(2)} height={up.toFixed(2)} class="up" style={`--t:${(i / session.length).toFixed(3)}`} />
+                <rect x={(i * step).toFixed(2)} y="33" width={Math.max(step - 1, 0.6).toFixed(2)} height={down.toFixed(2)} class="down" style={`--t:${(i / session.length).toFixed(3)}`} />
               </a>
             );
           })
@@ -72,58 +76,89 @@ const lines = [
 
     <div class="cols cols-side main-grid">
       <div class="stack">
-        <Panel label="Final tally">
+        <Panel label="Result">
           <span slot="head" class={`status-tag ${ok === true ? "ok" : ok === false ? "alert" : "neutral"}`}>{r.result ?? "Recorded"}</span>
           <div class="panel-body tally">
             <div class="big" data-count={r.yea}>{r.yea}</div>
-            <p class="label"><span class="sq-w"></span> Affirmative [yea]</p>
+            <p class="label"><span class="sq-w"></span> Yes (yea)</p>
             <div class="big dimbig" data-count={r.nay}>{r.nay}</div>
-            <p class="label"><span class="sq-d"></span> Negative [nay]</p>
+            <p class="label"><span class="sq-d"></span> No (nay)</p>
+          </div>
+          <div class="panel-body">
+            <TallyBar votes={votes} needed={t.needed} height={14} legend={false} />
+            <div class="rows-list">
+              <div><span><Term tip={rule.tip}>Needed to pass</Term></span><span>{t.needed} yes</span></div>
+              {
+                passMargin >= 0 ? (
+                  <div><span>Cleared by</span><span class="ok">{passMargin} {passMargin === 1 ? "vote" : "votes"}</span></div>
+                ) : ok === true ? (
+                  <div><span>Members' yes votes</span><span>{-passMargin} short</span></div>
+                ) : (
+                  <div><span>Fell short by</span><span class="alert">{-passMargin} {passMargin === -1 ? "vote" : "votes"}</span></div>
+                )
+              }
+              <div><span>Yes minus no</span><span>{diff === 0 ? "Tied" : `${diff > 0 ? "+" : ""}${diff}`}</span></div>
+            </div>
+            {passMargin < 0 && ok === true && <p class="note tie-note">Officially passed. Tie-breaking votes by the Vice President aren't part of member tallies.</p>}
           </div>
         </Panel>
 
-        <Panel label="Margin analysis" code="0xMRG_ANL">
+        <Panel label="About this vote">
           <div class="panel-body">
+            {
+              r.bill_id && (
+                <a class="btn bill-link" href={`/bills/${r.bill_id}`}>
+                  Open the bill · {billNumberFromId(r.bill_id)} →
+                </a>
+              )
+            }
+            {explained && <p class="note explain"><span class="label">What this vote was</span>{explained}</p>}
             <div class="rows-list">
-              <div><span>Differential</span><span>{diff >= 0 ? "+" : ""}{diff} votes</span></div>
-            </div>
-            <div class="mline" style={`--yea:${voting ? (100 * r.yea) / voting : 0}%;--thr:${voting ? Math.min(100, (100 * t.needed) / voting) : 50}%`}>
-              <span class="mfill"></span><span class="mthr"></span>
-            </div>
-            <div class="rows-list">
-              <div>
-                <span>Threshold ({t.needed})</span>
-                <span class={passMargin >= 0 ? "ok" : "alert"}>{passMargin >= 0 ? `Clears (+${passMargin})` : `Short (${passMargin})`}</span>
-              </div>
-            </div>
-          </div>
-          <div class="panel-body">
-            <p class="label meta-title">Procedural_meta</p>
-            <div class="rows-list">
-              <div><span>Session</span><span>{sessionLabel}</span></div>
-              <div><span>Roll_call</span><span>{r.roll_number}</span></div>
               <div><span>Date</span><span>{consoleDate(r.vote_date)}</span></div>
-              <div><span>Majority</span><span>{t.label}</span></div>
-              <div><span>Chamber</span><span>{chamberName.toUpperCase()}</span></div>
-              <div><span>Present</span><span>{r.present}</span></div>
-              <div><span>Not_voting</span><span>{r.not_voting}</span></div>
-              {r.bill_id && <div><span>Measure</span><span><a href={`/bills/${r.bill_id}`}>{billNumberFromId(r.bill_id)} →</a></span></div>}
+              <div><span>Chamber</span><span>{chamberName}</span></div>
+              <div><span>To pass</span><span><Term tip={rule.tip}>{rule.name}</Term></span></div>
+              <div><span><Term tip="Members who answered “present”: they were there but chose not to vote yes or no.">Present</Term></span><span>{r.present}</span></div>
+              <div><span>Didn't vote</span><span>{r.not_voting}</span></div>
+              {r.congress !== CONGRESS && <div><span>Congress</span><span>{r.congress}th</span></div>}
             </div>
             <div class="links">
-              <a class="btn ghost" href="/votes">‹ Back to directory</a>
+              <a class="btn ghost" href="/votes">‹ All votes</a>
               {r.official_url && <a class="btn ghost" href={r.official_url} target="_blank" rel="noopener">Official record ↗</a>}
             </div>
           </div>
-          <Terminal lines={lines} delay={500} />
         </Panel>
       </div>
 
+      {/* The log sits under the chart it narrates (in the Seat chart view), which also keeps the
+          left column about as long as the chart beside it instead of running far past it. */}
       <Panel class="viz-panel">
-        <VoteVisualizer rollCall={r} votes={votes} seats={seatInfo(votes, stats)} billTitle={bill?.title} />
+        <VoteVisualizer rollCall={r} votes={votes} seats={seatInfo(votes, stats)} billTitle={bill?.title ?? r.description}>
+          <Terminal slot="log" lines={lines} delay={400} />
+        </VoteVisualizer>
       </Panel>
     </div>
   </div>
 </Layout>
+
+<script>
+  // The strip of every vote this year is one Tab stop (on this vote's bar); the arrow keys move
+  // to the votes before and after it, and Enter opens one. Otherwise a keyboard user would tab
+  // through hundreds of bars before reaching the page.
+  const bars = [...document.querySelectorAll<SVGAElement>("svg.strip a")];
+  const here = Math.max(0, bars.findIndex((a) => a.classList.contains("here")));
+  bars.forEach((a, i) => a.setAttribute("tabindex", i === here ? "0" : "-1"));
+  bars.forEach((a) =>
+    a.addEventListener("keydown", (event) => {
+      const i = bars.indexOf(a);
+      const n = ({ ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: bars.length - 1 } as Record<string, number>)[event.key];
+      if (n === undefined || !bars[n]) return;
+      event.preventDefault();
+      a.setAttribute("tabindex", "-1");
+      bars[n].setAttribute("tabindex", "0");
+      bars[n].focus();
+    }),
+  );
+</script>
 
 <style>
   .strip-panel {
@@ -150,18 +185,35 @@ const lines = [
   .strip rect.down {
     fill: #333;
   }
-  .strip a:hover rect.up {
+  /* Each vote's whole column (not just its thin bars) answers the pointer. */
+  .strip rect.hit {
+    fill: transparent;
+  }
+  .strip a:hover rect.hit,
+  .strip a:focus-visible rect.hit {
+    fill: rgb(255 255 255 / 10%);
+  }
+  .strip a:hover rect.up,
+  .strip a:focus-visible rect.up {
     fill: #bdbdbd;
   }
-  .strip a:hover rect.down {
+  .strip a:hover rect.down,
+  .strip a:focus-visible rect.down {
     fill: #777;
   }
-  .strip a.here rect {
+  .strip a:focus {
+    outline: none;
+  }
+  .strip:has(a:focus-visible) {
+    outline: 1px solid var(--muted);
+    outline-offset: 3px;
+  }
+  .strip a.here rect:not(.hit) {
     fill: #fff;
   }
-  :global(.fx) .strip rect {
-    animation: bar-in 300ms ease both;
-    animation-delay: calc(var(--k) * 1.2ms);
+  :global(.fx) .strip rect:not(.hit) {
+    animation: bar-in calc(260ms * var(--fx-pace)) ease both;
+    animation-delay: calc(var(--t) * 640ms * var(--fx-pace));
     transform-box: fill-box;
   }
   :global(.fx) .strip rect.up {
@@ -181,8 +233,11 @@ const lines = [
   .tally .label {
     margin: 10px 0 22px;
   }
+  .tally .label:last-child {
+    margin-bottom: 0;
+  }
   .dimbig {
-    color: #6f6f6f;
+    color: #8a8a8a;
   }
   .sq-w,
   .sq-d {
@@ -195,31 +250,30 @@ const lines = [
   .sq-d {
     background: #555;
   }
-  .mline {
-    position: relative;
-    height: 2px;
-    margin: 18px 0 12px;
-    background: #2a2a2a;
+  .tie-note {
+    margin: 12px 0 0;
   }
-  .mfill {
-    position: absolute;
-    inset: 0 auto 0 0;
-    width: var(--yea);
-    background: var(--bright);
+  .explain {
+    margin: 0 0 6px;
+    padding: 10px 12px;
+    border-left: 2px solid var(--line-2);
+    background: var(--panel-2);
+    color: var(--soft);
   }
-  :global(.fx) .mfill {
-    animation: grow 900ms var(--ease) both 250ms;
+  .explain .label {
+    display: block;
+    margin-bottom: 4px;
   }
-  .mthr {
-    position: absolute;
-    left: var(--thr);
-    top: -5px;
-    width: 2px;
-    height: 12px;
-    background: var(--alert);
+  .strip-hint {
+    font: 400 var(--fs-sm) var(--font);
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--faint);
   }
-  .meta-title {
-    margin-bottom: 6px;
+  .bill-link {
+    width: 100%;
+    justify-content: space-between;
+    margin-bottom: 14px;
   }
   .links {
     display: flex;
@@ -228,10 +282,22 @@ const lines = [
     margin-top: 16px;
   }
   .links .btn {
-    padding: 9px 12px;
+    padding: 9px 13px;
+    font-size: var(--fs-sm);
   }
   @media (max-width: 860px) {
     .strip-head span:nth-child(2) {
+      display: none;
+    }
+    /* One column: the vote's title and seat chart come first, then the numbers. */
+    .main-grid > :global(.viz-panel) {
+      order: -1;
+    }
+  }
+  /* Phones: a year of votes squeezed into the screen's width is a grey smear of one-pixel bars
+     too thin to tap, so the page starts with the vote itself. */
+  @media (max-width: 640px) {
+    :global(.strip-panel) {
       display: none;
     }
   }

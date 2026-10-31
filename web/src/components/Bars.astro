@@ -26,13 +26,13 @@ const fmt = (n: number) => (Number.isInteger(n) ? n.toLocaleString("en-US") : n.
   <div class="axis-y label" aria-hidden="true">
     {ticks.map((t) => <span>{fmt(t)}</span>)}
   </div>
-  <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={data.map((d) => d.tip).join("; ")}>
+  <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="group" aria-label={`Bar chart, ${data.length} bars. Use the arrow keys to read each one.`}>
     {ticks.map((t) => <line x1="0" x2={W} y1={H - (t / max) * H} y2={H - (t / max) * H} class="grid" />)}
     {
       data.map((d, i) => {
         const h = (d.value / max) * H;
         return (
-          <g data-tip={d.tip} tabindex="0">
+          <g data-tip={d.tip} tabindex="0" role="img" aria-label={d.tip}>
             <rect x={i * step} y="0" width={step} height={H} class="hit" />
             <rect x={i * step + gap / 2} y={H - h} width={Math.max(step - gap, 1)} height={d.value > 0 ? Math.max(h, 0.6) : 0} class="bar" style={`--k:${i}`} />
           </g>
@@ -41,14 +41,14 @@ const fmt = (n: number) => (Number.isInteger(n) ? n.toLocaleString("en-US") : n.
     }
   </svg>
   <div class="axis-x label" aria-hidden="true">
-    {data.map((d, i) => <span>{i % labelEvery === 0 ? d.label : ""}</span>)}
+    {data.map((d, i) => <span class={i % (labelEvery * 2) === labelEvery ? "alt" : undefined}>{i % labelEvery === 0 ? d.label : ""}</span>)}
   </div>
 </figure>
 
 <style>
   .bars {
     display: grid;
-    grid-template-columns: 44px 1fr;
+    grid-template-columns: 52px 1fr;
     column-gap: 8px;
     margin: 0;
   }
@@ -88,8 +88,8 @@ const fmt = (n: number) => (Number.isInteger(n) ? n.toLocaleString("en-US") : n.
   :global(.fx) .bar {
     transform-box: fill-box;
     transform-origin: bottom;
-    animation: rise 520ms var(--ease) both;
-    animation-delay: calc(150ms + var(--k) * 18ms);
+    animation: rise calc(440ms * var(--fx-pace)) var(--ease) both;
+    animation-delay: calc(var(--fx-start) + var(--k) / var(--n) * 360ms * var(--fx-pace));
   }
   @keyframes rise {
     from {
@@ -102,7 +102,7 @@ const fmt = (n: number) => (Number.isInteger(n) ? n.toLocaleString("en-US") : n.
     flex-direction: column;
     justify-content: space-between;
     text-align: right;
-    font-size: 0.6rem;
+    letter-spacing: 0.02em;
   }
   .axis-y span:first-child {
     transform: translateY(-40%);
@@ -113,9 +113,21 @@ const fmt = (n: number) => (Number.isInteger(n) ? n.toLocaleString("en-US") : n.
   .axis-x {
     grid-column: 2;
     display: grid;
-    grid-template-columns: repeat(var(--n), 1fr);
+    /* minmax(0, …): a label may run into the empty cells beside it, but never widens the
+       chart past its panel on a phone. */
+    grid-template-columns: repeat(var(--n), minmax(0, 1fr));
     margin-top: 6px;
-    font-size: 0.6rem;
+    letter-spacing: 0.02em;
     white-space: nowrap;
+  }
+  /* The last label ends under the last bar instead of running past the chart's edge. */
+  .axis-x span:last-child {
+    justify-self: end;
+  }
+  /* Phones label every other tick, so month names don't run into each other. */
+  @media (max-width: 640px) {
+    .axis-x .alt {
+      visibility: hidden;
+    }
   }
 </style>

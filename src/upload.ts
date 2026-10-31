@@ -17,6 +17,7 @@ import path from "node:path";
 import { ROOT, nowIso, todayIso } from "./config.ts";
 import { d1ExecuteFile, d1Query } from "./d1.ts";
 import { all, getState, one, openDb, setState, transaction, upsert } from "./db.ts";
+import { ADDED_COLUMNS, columnMigrations } from "./migrations.ts";
 import { changedTables, estimateRows, loadUnits, unitSql, type Unit } from "./units.ts";
 
 const DAILY_BUDGET = Number(process.env.D1_DAILY_WRITE_BUDGET ?? 45_000);
@@ -51,7 +52,15 @@ const remoteState = new Map(
 const schemaFiles = ["schema.sql", "site.sql"].map((f) => path.join(ROOT, "db", f));
 const schemaHash = createHash("sha1").update(schemaFiles.map((f) => fs.readFileSync(f, "utf8")).join("\n")).digest("hex");
 if (remoteState.get("schema-hash") !== schemaHash) {
-  for (const file of schemaFiles) d1ExecuteFile(file);
+  const [schemaFile, siteFile] = schemaFiles;
+  d1ExecuteFile(schemaFile);
+  // Columns added after a table was created (site.sql's search index needs them).
+  const existing = new Set<string>();
+  for (const table of new Set(ADDED_COLUMNS.map((c) => c.table))) {
+    for (const r of d1Query<{ name: string }>(`SELECT name FROM pragma_table_info('${table}')`)) existing.add(`${table}.${r.name}`);
+  }
+  for (const sql of columnMigrations((table, column) => existing.has(`${table}.${column}`))) d1Query(sql);
+  d1ExecuteFile(siteFile);
   d1Query(
     `INSERT INTO sync_state (key, value, updated_at) VALUES ('schema-hash', '${schemaHash}', '${nowIso()}') ` +
       `ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,

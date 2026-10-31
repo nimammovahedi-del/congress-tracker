@@ -1,9 +1,10 @@
 ---
 import Bars from "../components/Bars.astro";
 import Panel from "../components/Panel.astro";
+import Term from "../components/Term.astro";
 import Layout from "../layouts/Layout.astro";
 import { memberStats, stat } from "../lib/db";
-import { formatNumber, memberTag, partyClass } from "../lib/format";
+import { CONGRESS, formatNumber, memberTag, partyClass } from "../lib/format";
 
 type Funnel = { grp: string; introduced: number; reported: number; passed_one: number; passed_both: number; law: number };
 type Output = { introduced: { month: string; house_bills: number; senate_bills: number; resolutions: number }[]; laws: { month: string; laws: number }[] };
@@ -43,7 +44,7 @@ const funnelGroups = {
 // Bill output
 const months = output?.introduced ?? [];
 const series = {
-  all: months.map((m) => ({ label: monthLabel(m.month), value: m.house_bills + m.senate_bills + m.resolutions, tip: `${monthLabel(m.month)}: ${formatNumber(m.house_bills + m.senate_bills + m.resolutions)} measures introduced` })),
+  all: months.map((m) => ({ label: monthLabel(m.month), value: m.house_bills + m.senate_bills + m.resolutions, tip: `${monthLabel(m.month)}: ${formatNumber(m.house_bills + m.senate_bills + m.resolutions)} bills and resolutions introduced` })),
   house: months.map((m) => ({ label: monthLabel(m.month), value: m.house_bills, tip: `${monthLabel(m.month)}: ${formatNumber(m.house_bills)} House bills` })),
   senate: months.map((m) => ({ label: monthLabel(m.month), value: m.senate_bills, tip: `${monthLabel(m.month)}: ${formatNumber(m.senate_bills)} Senate bills` })),
   res: months.map((m) => ({ label: monthLabel(m.month), value: m.resolutions, tip: `${monthLabel(m.month)}: ${formatNumber(m.resolutions)} resolutions` })),
@@ -90,190 +91,240 @@ const leastAligned = (party: string, chamber: string) =>
 
 // Topic trends: small multiples on a shared scale.
 const quarters = [...new Set((trends?.rows ?? []).map((r) => r.quarter))].sort();
+// "2025-Q1" in words: "Jan–Mar 2025" in tooltips, "Q1 2025" on the short axis.
+const QUARTER_MONTHS = ["Jan–Mar", "Apr–Jun", "Jul–Sep", "Oct–Dec"];
+const quarterName = (q: string) => {
+  const [y, n] = q.split("-Q");
+  return QUARTER_MONTHS[Number(n) - 1] ? `${QUARTER_MONTHS[Number(n) - 1]} ${y}` : q;
+};
+const quarterShort = (q: string) => q.replace(/^(\d{4})-Q(\d)$/, "Q$2 $1");
 const trendMax = Math.max(1, ...(trends?.rows ?? []).map((r) => r.bills));
 
 // Attendance
 const mostMissed = members.filter((m) => m.in_office && m.votes >= 50).sort((a, b) => (b.missed_pct ?? 0) - (a.missed_pct ?? 0)).slice(0, 10);
 ---
 
-<Layout title="Analytics" crumbs={["Intelligence", "Analytics"]}>
+<Layout title="Analytics" crumbs={[{ label: "Analytics" }]}>
   <div class="console">
     <Panel>
       <div class="panel-body head">
-        <p class="label"><span data-scramble>Intelligence // Trend analysis</span></p>
+        <p class="label"><span data-scramble>Trends across the {CONGRESS}th Congress</span></p>
         <h1 class="cursor"><span data-scramble>Analytics</span></h1>
         <div class="cols cols-4 tiles">
           <div class="statbox"><div class="label">Bills that became law</div><div class="value ok" data-count={lawRate.toFixed(2)} data-decimals="2" data-suffix="%">{fmtPct(lawRate)}</div></div>
-          <div class="statbox"><div class="label">Measures introduced</div><div class="value" data-count={overview?.bills ?? 0}>{formatNumber(overview?.bills)}</div></div>
-          <div class="statbox"><div class="label">Roll calls recorded</div><div class="value" data-count={overview?.votes ?? 0}>{formatNumber(overview?.votes)}</div></div>
-          <div class="statbox"><div class="label">Party-line votes</div><div class="value" data-count={partyLineShare.toFixed(1)} data-decimals="1" data-suffix="%">{partyLineShare.toFixed(1)}%</div></div>
+          <div class="statbox"><div class="label">Bills and resolutions introduced</div><div class="value" data-count={overview?.bills ?? 0}>{formatNumber(overview?.bills)}</div></div>
+          <div class="statbox"><div class="label">Recorded votes</div><div class="value" data-count={overview?.votes ?? 0}>{formatNumber(overview?.votes)}</div></div>
+          <div class="statbox"><div class="label"><Term tip="Votes where most Democrats voted one way and most Republicans the other.">Party-line votes</Term></div><div class="value" data-count={partyLineShare.toFixed(1)} data-decimals="1" data-suffix="%">{partyLineShare.toFixed(1)}%</div></div>
         </div>
       </div>
     </Panel>
 
-    <div class="cols cols-2 charts">
-      <Panel label="Legislative funnel // Pass rate" code="0xFNL" class="chart-panel" id="funnel">
-        <div class="panel-body">
-          <div class="toggles" data-switch="funnel">
-            <button class="toggle active" type="button" data-show="all">All</button>
-            <button class="toggle" type="button" data-show="chamber">By chamber</button>
-            <button class="toggle" type="button" data-show="party">By sponsor party</button>
-          </div>
-          {
-            Object.entries(funnelGroups).map(([view, groups]) => (
-              <div class="funnel" data-view={view} hidden={view !== "all"}>
-                {STAGES.map((s) => (
-                  <div class="stage">
-                    <span class="label">{s.label}</span>
-                    {groups.map((g) => {
-                      const v = g[s.key];
-                      const rate = pct(v, g.introduced);
-                      return (
-                        <div class="frow" data-tip={`${g.name}: ${formatNumber(v)} of ${formatNumber(g.introduced)} (${fmtPct(rate)})`} tabindex="0">
-                          <span class={`who party ${g.cls === "dem" ? "dem" : g.cls === "rep" ? "rep" : ""}`}>{groups.length > 1 ? (view === "chamber" ? g.grp[0] : g.grp) : ""}</span>
-                          <span class="track"><span class={`fill ${g.cls}`} style={`width:max(2px, ${rate}%)`} /></span>
-                          <span class="val">{fmtPct(rate)}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))}
-                <p class="label faint note">Bills and joint resolutions only · bar = share of all introduced</p>
-              </div>
-            ))
-          }
+    <div data-tabs class="sections">
+      <Panel class="tabs-panel">
+        <div class="tabbar">
+          <a class="tab-link" href="#bills" aria-selected="true">Bills</a>
+          <a class="tab-link" href="#party-voting">Party voting</a>
+          <a class="tab-link" href="#topic-trends">Topics</a>
+          <a class="tab-link" href="#attendance">Attendance</a>
         </div>
       </Panel>
 
-      <Panel label="Bill output // Monthly" code="0xOUT" class="chart-panel">
-        <div class="panel-body">
-          <div class="toggles" data-switch="output">
-            <button class="toggle active" type="button" data-show="all">All measures</button>
-            <button class="toggle" type="button" data-show="house">House bills</button>
-            <button class="toggle" type="button" data-show="senate">Senate bills</button>
-            <button class="toggle" type="button" data-show="res">Resolutions</button>
-          </div>
-          {Object.entries(series).map(([k, data]) => <div data-view={k} hidden={k !== "all"}><Bars data={data} height={190} /></div>)}
-          <p class="label sub">Signed into law · monthly</p>
-          <Bars data={lawSeries} height={90} tone="ok" />
-          <details>
-            <summary>View as table</summary>
-            <table class="rtable small-table">
-              <thead><tr><th>Month</th><th class="num">House bills</th><th class="num">Senate bills</th><th class="num">Resolutions</th><th class="num">Laws</th></tr></thead>
-              <tbody>{months.map((m) => <tr><td class="mono">{monthLabel(m.month)}</td><td class="num">{m.house_bills}</td><td class="num">{m.senate_bills}</td><td class="num">{m.resolutions}</td><td class="num">{lawsBy.get(m.month) ?? 0}</td></tr>)}</tbody>
-            </table>
-          </details>
-        </div>
-      </Panel>
-
-      <Panel label="Party alignment // Distribution" code="0xUNI" class="chart-panel">
-        <div class="panel-body">
-          <div class="toggles" data-switch="unity">
-            <button class="toggle active" type="button" data-show="house">House</button>
-            <button class="toggle" type="button" data-show="senate">Senate</button>
-          </div>
-          {
-            ["house", "senate"].map((chamber) => (
-              <div data-view={chamber} hidden={chamber !== "house"}>
-                <div class="strip-wrap">
-                  <div class="strip-rows label">
-                    <span>DEM</span>
-                    <span>REP</span>
-                    <span>IND</span>
-                  </div>
-                  <svg class="dots" viewBox="0 0 100 150" preserveAspectRatio="none" role="img" aria-label={`Party alignment of ${chamber} members`}>
-                    {[0, 25, 50, 75, 100].map((x) => <line x1={x} x2={x} y1="0" y2="150" class="vgrid" />)}
-                    {strip(chamber).map((d) => (
-                      <g data-tip={d.tip} tabindex="0">
-                        <ellipse cx={d.x.toFixed(2)} cy={d.y.toFixed(1)} rx="0.75" ry="2.4" class={`pd ${partyClass(d.p)}`} />
-                      </g>
-                    ))}
-                  </svg>
-                  <div class="strip-axis label">
-                    {[0, 25, 50, 75, 100].map((x) => <span>{Math.round(UNITY_MIN + ((100 - UNITY_MIN) * x) / 100)}%</span>)}
-                  </div>
-                </div>
-                <div class="least">
-                  {["D", "R"].map((p) => (
-                    <div>
-                      <p class="label">Least aligned · <span class={`party ${partyClass(p)}`}>{p === "D" ? "DEM" : "REP"}</span></p>
-                      {leastAligned(p, chamber).map((m) => (
-                        <a class="lrow" href={`/members/${m.id}`}>
-                          <span>{m.name}</span>
-                          <span class="mono">{m.party_unity_pct}%</span>
-                        </a>
-                      ))}
+      <section class="tab-pane" id="bills">
+      <header class="pane-head sec-head">
+        <h2>How bills move through Congress</h2>
+        <p>How far bills get, and how many are introduced and signed into law each month.</p>
+      </header>
+      <div class="cols cols-2 charts">
+        <Panel label="How far bills get" class="chart-panel" id="funnel">
+          <div class="panel-body">
+            <div class="toggles" data-switch="funnel">
+              <button class="toggle active" type="button" aria-pressed="true" data-show="all">All</button>
+              <button class="toggle" type="button" aria-pressed="false" data-show="chamber">By chamber</button>
+              <button class="toggle" type="button" aria-pressed="false" data-show="party">By sponsor party</button>
+            </div>
+            {
+              Object.entries(funnelGroups).map(([view, groups]) => (
+                <div class="funnel" data-view={view} hidden={view !== "all"}>
+                  {STAGES.map((s) => (
+                    <div class="stage">
+                      <span class="label">{s.label}</span>
+                      {groups.map((g) => {
+                        const v = g[s.key];
+                        const rate = pct(v, g.introduced);
+                        return (
+                          <div class="frow" data-tip={`${g.name}: ${formatNumber(v)} of ${formatNumber(g.introduced)} (${fmtPct(rate)})`} tabindex="0">
+                            <span class={`who party ${g.cls === "dem" ? "dem" : g.cls === "rep" ? "rep" : ""}`}>{groups.length > 1 ? (view === "chamber" ? g.grp[0] : g.grp) : ""}</span>
+                            <span class="track"><span class={`fill ${g.cls}`} style={`width:max(2px, ${rate}%)`} /></span>
+                            <span class="val">{fmtPct(rate)}</span>
+                          </div>
+                        );
+                      })}
                     </div>
                   ))}
+                  <p class="note">Bills and joint resolutions only. Each bar is the share of all those introduced that reached the step. Point at or tap a bar for its numbers.</p>
                 </div>
-              </div>
-            ))
-          }
-          <p class="label faint note">Share of party-split votes where a member sided with their party · Independents counted with Democrats</p>
-        </div>
-      </Panel>
-
-      <Panel label="Party-line votes // Monthly share" code="0xPLV" class="chart-panel">
-        <div class="panel-body">
-          <div class="toggles" data-switch="margins">
-            <button class="toggle active" type="button" data-show="house">House</button>
-            <button class="toggle" type="button" data-show="senate">Senate</button>
-          </div>
-          {["house", "senate"].map((c) => <div data-view={c} hidden={c !== "house"}><Bars data={marginSeries(c)} height={200} unit="%" max={100} tone="dim" /></div>)}
-          <p class="label faint note">Votes where most Democrats and most Republicans voted opposite ways, as a share of all roll calls that month</p>
-        </div>
-      </Panel>
-    </div>
-
-    <Panel label="Topic trends // Measures introduced per quarter" code="0xTPC" class="trends-panel">
-      <div class="panel-body multiples">
-        {
-          (trends?.areas ?? []).map((area) => {
-            const byQ = new Map((trends?.rows ?? []).filter((r) => r.area === area).map((r) => [r.quarter, r.bills]));
-            const total = [...byQ.values()].reduce((a, b) => a + b, 0);
-            return (
-              <div class="mult">
-                <div class="mult-head">
-                  <span class="mult-name">{area}</span>
-                  <span class="label">{formatNumber(total)}</span>
-                </div>
-                <div class="mini" style={`--n:${quarters.length}`}>
-                  {quarters.map((q) => (
-                    <span data-tip={`${area} · ${q}: ${byQ.get(q) ?? 0} measures`} tabindex="0">
-                      <i style={`height:${((byQ.get(q) ?? 0) / trendMax) * 100}%`} />
-                    </span>
-                  ))}
-                </div>
-                <div class="mini-axis label"><span>{quarters[0]}</span><span>{quarters.at(-1)}</span></div>
-              </div>
-            );
-          })
-        }
-      </div>
-      <p class="label faint note pad">Ten busiest policy areas · all panels share one scale</p>
-    </Panel>
-
-    <Panel label="Attendance // Most missed votes" code="0xATT">
-      <div class="table-scroll">
-        <table class="rtable">
-          <thead><tr><th>Member</th><th>Seat</th><th class="num">Votes</th><th class="num">Missed</th></tr></thead>
-          <tbody>
-            {
-              mostMissed.map((m) => (
-                <tr data-href={`/members/${m.id}`}>
-                  <td><a href={`/members/${m.id}`}>{m.name}</a></td>
-                  <td class="mono"><span class={`party ${partyClass(m.party)}`}>{memberTag(m)}</span></td>
-                  <td class="num">{formatNumber(m.votes)}</td>
-                  <td class="num">{m.missed_pct}%</td>
-                </tr>
               ))
             }
-          </tbody>
-        </table>
-      </div>
-    </Panel>
+          </div>
+        </Panel>
 
-    <div class="tooltip label" role="status" hidden></div>
+        <Panel label="Bills introduced each month" class="chart-panel">
+          <div class="panel-body">
+            <div class="toggles" data-switch="output">
+              <button class="toggle active" type="button" aria-pressed="true" data-show="all">Everything</button>
+              <button class="toggle" type="button" aria-pressed="false" data-show="house">House bills</button>
+              <button class="toggle" type="button" aria-pressed="false" data-show="senate">Senate bills</button>
+              <button class="toggle" type="button" aria-pressed="false" data-show="res">Resolutions</button>
+            </div>
+            {Object.entries(series).map(([k, data]) => <div data-view={k} hidden={k !== "all"}><Bars data={data} height={190} /></div>)}
+            <p class="label sub">Signed into law · monthly</p>
+            <Bars data={lawSeries} height={90} tone="ok" />
+            <details>
+              <summary>View as table</summary>
+              <div class="table-scroll">
+              <table class="rtable small-table">
+                <thead><tr><th>Month</th><th class="num">House bills</th><th class="num">Senate bills</th><th class="num">Resolutions</th><th class="num">Laws</th></tr></thead>
+                <tbody>{months.map((m) => <tr><td class="mono">{monthLabel(m.month)}</td><td class="num">{m.house_bills}</td><td class="num">{m.senate_bills}</td><td class="num">{m.resolutions}</td><td class="num">{lawsBy.get(m.month) ?? 0}</td></tr>)}</tbody>
+              </table>
+              </div>
+            </details>
+          </div>
+        </Panel>
+
+      </div>
+      </section>
+
+      <section class="tab-pane" id="party-voting">
+      <header class="pane-head sec-head">
+        <h2>Voting with the party</h2>
+        <p>Where each member stands, and how many votes split the parties each month.</p>
+      </header>
+      <div class="cols cols-2 charts">
+        <Panel label="How often members vote with their party" class="chart-panel">
+          <div class="panel-body">
+            <div class="toggles" data-switch="unity">
+              <button class="toggle active" type="button" aria-pressed="true" data-show="house">House</button>
+              <button class="toggle" type="button" aria-pressed="false" data-show="senate">Senate</button>
+            </div>
+            {
+              ["house", "senate"].map((chamber) => (
+                <div data-view={chamber} hidden={chamber !== "house"}>
+                  <div class="strip-wrap">
+                    <div class="strip-rows label">
+                      <span class="party dem">Democrats</span>
+                      <span class="party rep">Republicans</span>
+                      <span class="party ind">Independents</span>
+                    </div>
+                    <svg class="dots" viewBox="0 0 100 150" preserveAspectRatio="none" role="group" aria-label={`How often each ${chamber === "senate" ? "senator" : "representative"} voted with their party. Use the arrow keys to move between members.`}>
+                      {[0, 25, 50, 75, 100].map((x) => <line x1={x} x2={x} y1="0" y2="150" class="vgrid" />)}
+                      {strip(chamber).map((d) => (
+                        <g data-tip={d.tip} tabindex="0" role="img" aria-label={d.tip}>
+                          <ellipse cx={d.x.toFixed(2)} cy={d.y.toFixed(1)} rx="0.75" ry="2.4" class={`pd ${partyClass(d.p)}`} />
+                        </g>
+                      ))}
+                    </svg>
+                    <div class="strip-axis label">
+                      {[0, 25, 50, 75, 100].map((x) => <span>{Math.round(UNITY_MIN + ((100 - UNITY_MIN) * x) / 100)}%</span>)}
+                    </div>
+                  </div>
+                  <div class="least">
+                    {["D", "R"].map((p) => (
+                      <div>
+                        <p class="label least-head"><span class={`party ${partyClass(p)}`}>{p === "D" ? "Democrats" : "Republicans"}</span> least often with their party</p>
+                        {leastAligned(p, chamber).map((m) => (
+                          <a class="lrow" href={`/members/${m.id}`}>
+                            <span>{m.name}</span>
+                            <span class="mono">{m.party_unity_pct}%</span>
+                          </a>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))
+            }
+            <p class="note">Each mark is one member, placed by how often they voted with their party when the two parties split. Independents are counted with Democrats. Point at or tap a mark to see who it is.</p>
+          </div>
+        </Panel>
+
+        <Panel label="Party-line votes each month" class="chart-panel">
+          <div class="panel-body">
+            <div class="toggles" data-switch="margins">
+              <button class="toggle active" type="button" aria-pressed="true" data-show="house">House</button>
+              <button class="toggle" type="button" aria-pressed="false" data-show="senate">Senate</button>
+            </div>
+            {["house", "senate"].map((c) => <div data-view={c} hidden={c !== "house"}><Bars data={marginSeries(c)} height={200} unit="%" max={100} tone="dim" /></div>)}
+            <p class="note">Votes where most Democrats and most Republicans voted opposite ways, as a share of all recorded votes that month</p>
+          </div>
+        </Panel>
+      </div>
+
+      </section>
+
+      <section class="tab-pane" id="topic-trends">
+      <header class="pane-head sec-head">
+        <h2>Bills by topic over time</h2>
+        <p>Bills and resolutions introduced each quarter in the ten busiest policy areas.</p>
+      </header>
+      <Panel label="Bills introduced per quarter, by topic" class="trends-panel">
+        <div class="panel-body multiples">
+          {
+            (trends?.areas ?? []).map((area) => {
+              const byQ = new Map((trends?.rows ?? []).filter((r) => r.area === area).map((r) => [r.quarter, r.bills]));
+              const total = [...byQ.values()].reduce((a, b) => a + b, 0);
+              return (
+                <div class="mult">
+                  <div class="mult-head">
+                    <span class="mult-name">{area}</span>
+                    <span class="label">{formatNumber(total)}</span>
+                  </div>
+                  <div class="mini" style={`--n:${quarters.length}`}>
+                    {quarters.map((q) => (
+                      <span data-tip={`${area} · ${quarterName(q)}: ${byQ.get(q) ?? 0} bills and resolutions`} tabindex="0" role="img" aria-label={`${area} · ${quarterName(q)}: ${byQ.get(q) ?? 0} bills and resolutions`}>
+                        <i style={`height:${((byQ.get(q) ?? 0) / trendMax) * 100}%`} />
+                      </span>
+                    ))}
+                  </div>
+                  <div class="mini-axis label"><span>{quarters[0] && quarterShort(quarters[0])}</span><span>{quarters.at(-1) && quarterShort(quarters.at(-1)!)}</span></div>
+                </div>
+              );
+            })
+          }
+        </div>
+        <p class="note pad">Ten busiest policy areas · all panels share one scale</p>
+      </Panel>
+
+      </section>
+
+      <section class="tab-pane" id="attendance">
+      <header class="pane-head sec-head">
+        <h2>Missed votes</h2>
+        <p>Members serving now who missed the largest share of recorded votes.</p>
+      </header>
+      <Panel label="Most missed votes · members serving now">
+        <div class="table-scroll">
+          <table class="rtable">
+            <thead><tr><th>Member</th><th>Seat</th><th class="num">Votes</th><th class="num">Missed</th></tr></thead>
+            <tbody>
+              {
+                mostMissed.map((m) => (
+                  <tr data-href={`/members/${m.id}`}>
+                    <td><a href={`/members/${m.id}`}>{m.name}</a></td>
+                    <td class="mono"><span class={`party ${partyClass(m.party)}`}>{memberTag(m)}</span></td>
+                    <td class="num">{formatNumber(m.votes)}</td>
+                    <td class="num">{m.missed_pct}%</td>
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+
+      </section>
+    </div>
+
+    <div class="tooltip" role="status" hidden></div>
   </div>
 </Layout>
 
@@ -284,8 +335,15 @@ const mostMissed = members.filter((m) => m.in_office && m.votes >= 50).sort((a, 
     const buttons = group.querySelectorAll<HTMLButtonElement>("[data-show]");
     buttons.forEach((b) =>
       b.addEventListener("click", () => {
-        buttons.forEach((x) => x.classList.toggle("active", x === b));
-        panel.querySelectorAll<HTMLElement>(":scope > [data-view]").forEach((v) => (v.hidden = v.dataset.view !== b.dataset.show));
+        buttons.forEach((x) => {
+          x.classList.toggle("active", x === b);
+          x.setAttribute("aria-pressed", String(x === b));
+        });
+        panel.querySelectorAll<HTMLElement>(":scope > [data-view]").forEach((v) => {
+          v.hidden = v.dataset.view !== b.dataset.show;
+          // A chart picked here grows straight away, without the page's arrival delay.
+          if (!v.hidden) v.style.setProperty("--fx-start", "0ms");
+        });
       }),
     );
   });
@@ -311,6 +369,31 @@ const mostMissed = members.filter((m) => m.in_office && m.votes >= 50).sort((a, 
     show(el, r.left + r.width / 2, r.top);
   });
   document.addEventListener("focusout", () => (tip.hidden = true));
+  // Touch screens can't hover: a tap on a mark shows its tooltip until the next tap.
+  document.addEventListener("click", (e) => {
+    const el = (e.target as Element).closest?.("[data-tip]");
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    show(el, r.left + r.width / 2, r.top);
+  });
+
+  // Charts with many marks are a single Tab stop each; the arrow keys move from mark to mark,
+  // showing each one's tooltip. (Otherwise a keyboard user would tab through hundreds of dots.)
+  document.querySelectorAll<Element>(".dots, .bars svg, .mini").forEach((chart) => {
+    const marks = [...chart.querySelectorAll<HTMLElement>(":scope > [data-tip]")];
+    if (marks.length < 2) return;
+    marks.forEach((m, i) => m.setAttribute("tabindex", i === 0 ? "0" : "-1"));
+    chart.addEventListener("keydown", (event) => {
+      const i = marks.indexOf(document.activeElement as HTMLElement);
+      const key = (event as KeyboardEvent).key;
+      const n = ({ ArrowRight: i + 1, ArrowDown: i + 1, ArrowLeft: i - 1, ArrowUp: i - 1, Home: 0, End: marks.length - 1 } as Record<string, number>)[key];
+      if (i < 0 || n === undefined || !marks[n]) return;
+      event.preventDefault();
+      marks[i].setAttribute("tabindex", "-1");
+      marks[n].setAttribute("tabindex", "0");
+      marks[n].focus();
+    });
+  });
 </script>
 
 <style>
@@ -320,10 +403,36 @@ const mostMissed = members.filter((m) => m.in_office && m.votes >= 50).sort((a, 
   .tiles {
     gap: 12px;
   }
+  .sections {
+    margin-top: var(--gap);
+  }
+  /* The section tabs sit in their own strip above the charts they switch between. */
+  .tabs-panel {
+    margin-bottom: var(--gap);
+  }
+  .tabs-panel .tabbar {
+    border-bottom: 0;
+  }
+  /* Each view opens with its own heading, like the tabs on other pages; here it sits on the
+     page above the view's panels rather than inside a frame. */
+  .sec-head {
+    padding: 4px 2px var(--gap);
+    border-bottom: 0;
+  }
+  .tabs-on .tab-pane + .tab-pane,
+  .tab-pane + .tab-pane {
+    border-top: 0;
+  }
+  .tab-pane + .tab-pane {
+    margin-top: var(--gap);
+  }
+  .tabs-on .tab-pane + .tab-pane {
+    margin-top: 0;
+  }
+  /* Two charts side by side share one height, so their frames line up. */
   .charts {
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr));
-    margin-top: var(--gap);
-    margin-bottom: var(--gap);
+    align-items: stretch;
   }
   .chart-panel .toggles {
     margin-bottom: 18px;
@@ -344,6 +453,17 @@ const mostMissed = members.filter((m) => m.in_office && m.votes >= 50).sort((a, 
   }
   .frow:focus {
     outline: none;
+  }
+  .frow:focus-visible {
+    outline: 1px solid var(--bright);
+    outline-offset: 4px;
+  }
+  /* With a single group there's no group letter, so the bars start flush with the labels. */
+  .frow:has(.who:empty) {
+    grid-template-columns: 1fr 64px;
+  }
+  .who:empty {
+    display: none;
   }
   .frow:hover .track,
   .frow:focus .track {
@@ -368,10 +488,10 @@ const mostMissed = members.filter((m) => m.in_office && m.votes >= 50).sort((a, 
     background: var(--rep);
   }
   :global(.fx) .fill {
-    animation: grow 800ms var(--ease) both 250ms;
+    animation: grow calc(560ms * var(--fx-pace)) var(--ease) both var(--fx-start);
   }
   .val {
-    font: 0.8rem var(--mono);
+    font: var(--fs-sm) var(--mono);
     text-align: right;
     color: var(--bright);
   }
@@ -387,7 +507,7 @@ const mostMissed = members.filter((m) => m.in_office && m.votes >= 50).sort((a, 
   }
   .strip-wrap {
     position: relative;
-    padding-left: 44px;
+    padding-left: 96px;
   }
   .strip-rows {
     position: absolute;
@@ -439,17 +559,27 @@ const mostMissed = members.filter((m) => m.in_office && m.votes >= 50).sort((a, 
     gap: 18px;
     margin-top: 18px;
   }
+  /* Party name first, so the two lists' headings line up even when one wraps. */
+  .least-head .party {
+    display: block;
+    margin-bottom: 2px;
+  }
   .lrow {
     display: flex;
     justify-content: space-between;
     gap: 8px;
-    padding: 6px 0;
+    padding: 7px 0;
     border-bottom: 1px solid var(--line);
-    font-size: 0.86rem;
+    font-size: 0.94rem;
   }
   .lrow .mono {
-    font-size: 0.78rem;
+    font-size: var(--fs-sm);
     color: var(--bright);
+  }
+  @media (max-width: 520px) {
+    .least {
+      grid-template-columns: 1fr;
+    }
   }
   .trends-panel {
     margin-bottom: var(--gap);
@@ -459,18 +589,25 @@ const mostMissed = members.filter((m) => m.in_office && m.votes >= 50).sort((a, 
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr));
     gap: 18px 22px;
   }
+  /* A name on two lines pushes only its own header down; the charts in a row keep one
+     baseline, so their bars compare at a glance. */
+  .mult {
+    display: flex;
+    flex-direction: column;
+  }
   .mult-head {
     display: flex;
     justify-content: space-between;
     gap: 8px;
     margin-bottom: 8px;
   }
+  .mult .mini {
+    margin-top: auto;
+  }
   .mult-name {
-    font-size: 0.88rem;
+    font-size: 0.94rem;
+    line-height: 1.3;
     color: var(--bright);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
   .mini {
     display: grid;
@@ -498,7 +635,7 @@ const mostMissed = members.filter((m) => m.in_office && m.votes >= 50).sort((a, 
     outline: none;
   }
   :global(.fx) .mini i {
-    animation: grow-v 600ms var(--ease) both 300ms;
+    animation: grow-v calc(440ms * var(--fx-pace)) var(--ease) both var(--fx-start);
     transform-origin: bottom;
   }
   @keyframes grow-v {
@@ -522,6 +659,6 @@ const mostMissed = members.filter((m) => m.in_office && m.votes >= 50).sort((a, 
     background: var(--bright);
     color: #050505;
     pointer-events: none;
-    letter-spacing: 0.06em;
+    font: 500 var(--fs-sm)/1.4 var(--font);
   }
 </style>

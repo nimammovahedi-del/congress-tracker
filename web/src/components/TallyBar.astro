@@ -1,0 +1,159 @@
+---
+// A vote's yes/no bar split by party: Democrat, Independent, then Republican yes votes in
+// solid party color, then their no votes hatched, with the votes needed to pass marked.
+// Uses the same colors as the seat chart and party boxes so the bar reads at a glance.
+import type { MemberVote } from "../lib/db";
+
+interface Props {
+  votes: MemberVote[];
+  needed: number;
+  rule?: string; // e.g. 'Simple majority'
+  height?: number;
+  legend?: boolean;
+}
+const { votes, needed, rule, height = 22, legend = true } = Astro.props;
+
+const ORDER = ["D", "I", "R"] as const;
+const NAMES = { D: "Democrats", I: "Independents", R: "Republicans" };
+const CLASSES = { D: "dem", I: "ind", R: "rep" };
+const partyOf = (v: MemberVote) => (v.party === "D" || v.party === "R" ? v.party : "I");
+const count = (p: string, position: string) => votes.filter((v) => partyOf(v) === p && v.position === position).length;
+const segments = [
+  ...ORDER.map((p) => ({ p, position: "yea", n: count(p, "yea") })),
+  ...ORDER.map((p) => ({ p, position: "nay", n: count(p, "nay") })),
+].filter((s) => s.n > 0);
+const total = segments.reduce((sum, s) => sum + s.n, 0);
+// Where each segment starts and how wide it is, as fractions of the bar, so the arrival
+// fill runs left to right at one speed, like a single meter filling.
+let filled = 0;
+const placed = segments.map((s) => {
+  const at = total ? filled / total : 0;
+  filled += s.n;
+  return { ...s, at, w: total ? s.n / total : 0 };
+});
+const yes = segments.filter((s) => s.position === "yea").reduce((sum, s) => sum + s.n, 0);
+const threshold = total ? Math.min(100, (100 * needed) / total) : 50;
+const label = segments.map((s) => `${NAMES[s.p]} ${s.position === "yea" ? "yes" : "no"}: ${s.n}`).join(", ");
+---
+
+<figure class="tally-bar">
+  <div class="bar" style={`--h:${height}px;--thr:${threshold}%`} role="img" aria-label={`${label}. ${needed} needed to pass.`}>
+    {
+      placed.map((s) => (
+        <span class={`seg ${CLASSES[s.p]} ${s.position}`} style={`flex:${s.n};--at:${s.at.toFixed(3)};--w:${s.w.toFixed(3)}`} title={`${NAMES[s.p]} voting ${s.position === "yea" ? "yes" : "no"}: ${s.n}`} />
+      ))
+    }
+    <span class="thr" title={`${needed} needed to pass`}></span>
+  </div>
+  {
+    legend && (
+      <figcaption class="label legend">
+        <span><i class="sw yes" /> Yes · {yes}</span>
+        <span><i class="sw no" /> No · {total - yes}</span>
+        <span><i class="sw line" /> {needed} needed{rule ? ` (${rule.toLowerCase()})` : ""}</span>
+        <span class="parties-key">
+          {ORDER.filter((p) => segments.some((s) => s.p === p)).map((p) => <b class={`party ${CLASSES[p]}`}>{NAMES[p]}</b>)}
+        </span>
+      </figcaption>
+    )
+  }
+</figure>
+
+<style>
+  .tally-bar {
+    margin: 0;
+  }
+  .bar {
+    position: relative;
+    display: flex;
+    gap: 2px;
+    height: var(--h);
+    padding: 2px;
+    border: 1px solid var(--line-2);
+    background: #0e0e0e;
+  }
+  .seg {
+    min-width: 2px;
+    transform-origin: left;
+  }
+  .seg.dem {
+    --c: var(--dem);
+  }
+  .seg.rep {
+    --c: var(--rep);
+  }
+  .seg.ind {
+    --c: var(--ind);
+  }
+  .seg.yea {
+    background: var(--c);
+  }
+  /* No votes: the party color, lighter and hatched, so they read without relying on color alone. */
+  .seg.nay {
+    background:
+      repeating-linear-gradient(135deg, var(--c) 0 2px, transparent 2px 6px),
+      color-mix(in srgb, var(--c) 22%, transparent);
+  }
+  .seg:hover {
+    filter: brightness(1.25);
+  }
+  :global(.fx) .seg {
+    transform-origin: left;
+    animation: seg-in linear both;
+    animation-duration: calc(max(var(--w) * 620ms, 30ms) * var(--fx-pace));
+    animation-delay: calc(var(--fx-start) + var(--at) * 620ms * var(--fx-pace));
+  }
+  @keyframes seg-in {
+    from {
+      transform: scaleX(0);
+    }
+  }
+  .thr {
+    position: absolute;
+    top: -5px;
+    bottom: -5px;
+    left: var(--thr);
+    width: 2px;
+    margin-left: -1px;
+    background: var(--bright);
+    box-shadow: 0 0 0 1px #050505;
+  }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    margin-top: 10px;
+  }
+  .legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .sw {
+    display: inline-block;
+    width: 14px;
+    height: 10px;
+  }
+  .sw.yes {
+    background: linear-gradient(90deg, var(--dem) 0 50%, var(--rep) 50%);
+  }
+  .sw.no {
+    background:
+      repeating-linear-gradient(135deg, #bdbdbd 0 2px, transparent 2px 5px),
+      #2a2a2a;
+  }
+  .sw.line {
+    width: 2px;
+    height: 14px;
+    background: var(--bright);
+  }
+  .parties-key {
+    margin-left: auto;
+    gap: 10px !important;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :global(.fx) .seg {
+      animation: none;
+    }
+  }
+</style>

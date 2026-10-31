@@ -1,19 +1,24 @@
 ---
 // The vote visualizer: a seat chart (each dot a member: party color, filled = Yea,
-// outline = Nay, faint = didn't vote) with a member inspector, and a Registry view with the
-// tally analysis and a searchable member list. Used on vote pages and bill pages.
+// outline = Nay, faint = didn't vote) with a member inspector, and a member list with the
+// tally analysis and a searchable list of every member's vote. The two views are tabs (see
+// initTabs in fx.ts). Used on vote pages, where its heading is the page title, and embedded
+// on bill pages, where the bill is already named above it.
 import type { MemberVote, RollCall } from "../lib/db";
-import { billNumberFromId, consoleDate, memberTag, partyClass, POSITION_LABELS } from "../lib/format";
+import { consoleDate, memberTag, partyClass, POSITION_LABELS, STATES } from "../lib/format";
 import { hemicycle } from "../lib/hemicycle";
-import { threshold, type SeatInfo } from "../lib/votes";
+import { passed, ruleInfo, threshold, voteRef, type SeatInfo } from "../lib/votes";
+import TallyBar from "./TallyBar.astro";
+import Term from "./Term.astro";
 
 interface Props {
   rollCall: RollCall;
   votes: MemberVote[];
   seats: Record<string, SeatInfo>;
   billTitle?: string | null;
+  embedded?: boolean;
 }
-const { rollCall: r, votes, seats: seatData, billTitle } = Astro.props;
+const { rollCall: r, votes, seats: seatData, billTitle, embedded = false } = Astro.props;
 
 const PARTY_ORDER = ["D", "I", "R"];
 const POSITION_ORDER = ["yea", "nay", "present", "not_voting", "other"];
@@ -34,95 +39,125 @@ const parties = PARTY_ORDER.map((p) => {
 }).filter((x) => x.total > 0);
 
 const t = threshold(r);
-const voting = r.yea + r.nay;
+const ok = passed(r);
 const registry = [...votes].sort((a, b) => (a.last_name ?? "").localeCompare(b.last_name ?? ""));
-const heading = r.bill_id ? billNumberFromId(r.bill_id) : r.subject_ref?.startsWith("PN") ? `Nomination ${r.subject_ref.slice(2)}` : `Roll ${r.roll_number}`;
+const heading = voteRef(r);
 const PARTY_NAMES: Record<string, string> = { D: "Democrat", R: "Republican", I: "Independent" };
+const chamberName = r.chamber === "senate" ? "Senate" : "House";
+const diff = r.yea - r.nay;
+const absent = votes.filter((v) => v.position !== "yea" && v.position !== "nay").length;
+const UNITY_TIP = "On votes where most Democrats and most Republicans voted on opposite sides, how often this member voted with most of their own party.";
 ---
 
-<div class="viz" data-viz data-chamber={r.chamber}>
+<div class="viz" data-viz data-tabs data-chamber={r.chamber}>
+  {/* What the vote was and how it came out, above both views, so it stays put when the view
+      changes. On vote pages it holds the page title; on bill pages the bill is named above. */}
   <header class="viz-head">
-    <span class="label">Visualizer_mode</span>
-    <div class="toggles" role="tablist">
-      <button class="toggle active" type="button" role="tab" aria-selected="true" data-tab="hemicycle">Hemicycle</button>
-      <button class="toggle" type="button" role="tab" aria-selected="false" data-tab="registry">Registry</button>
-    </div>
+    <p class="label entry"><span class="sq-mini"></span> {chamberName} vote {r.roll_number} <span class="faint">·</span> {consoleDate(r.vote_date)}</p>
+    {
+      embedded ? (
+        <p class="question-big">{r.question ?? "Recorded vote"}</p>
+      ) : (
+        <>
+          <h1 class="measure cursor"><span data-scramble>{heading}</span></h1>
+          {billTitle && (r.bill_id ? <a class="bill-title" href={`/bills/${r.bill_id}`}>{billTitle} <span aria-hidden="true">→</span></a> : <p class="bill-title">{billTitle}</p>)}
+          <p class="question"><span class="label">The question</span> {r.question ?? "Recorded vote"}</p>
+        </>
+      )
+    }
+    {/* The outcome. Vote pages show it in their Result panel, so here only on one-column
+        screens, where that panel falls below the chart. */}
+    <p class:list={["quick-result", !embedded && "narrow-only"]}>
+      <span class={`status-tag ${ok === true ? "ok" : ok === false ? "alert" : "neutral"}`}>{ok === true ? "Passed" : ok === false ? "Failed" : "Recorded"}</span>{" "}
+      <span><b>{r.yea}</b> yes · <b>{r.nay}</b> no</span>{" "}
+      {ok === true && r.chamber === "senate" && r.yea === r.nay && <span class="note">The Vice President broke the tie</span>}
+    </p>
   </header>
 
-  <!-- Hemicycle -->
-  <div class="tab" data-pane="hemicycle">
+  <div class="tabbar">
+    <a class="tab-link" href="#vote-seats" aria-selected="true">Seat chart</a>
+    <a class="tab-link" href="#vote-list" data-list-tab>Member list <span class="n">{votes.length}</span></a>
+  </div>
+
+  <!-- Seat chart -->
+  <div class="tab-pane" id="vote-seats" data-pane="hemicycle">
     <div class="hemi-layout">
       <div class="hemi-main">
-        <p class="label entry"><span class="sq-mini"></span> {r.bill_id ? "Resolution entry" : "Roll call entry"} <span class="faint">|</span> {consoleDate(r.vote_date)}</p>
-        <h2 class="measure cursor"><span data-scramble>{heading}</span></h2>
-        {billTitle && <p class="bill-title">{billTitle}</p>}
-        <p class="label question">Vote [{r.question ?? "Recorded vote"}]</p>
-
-        <svg class="hemi" viewBox="-106 -106 212 114" role="img" aria-label={`Seat chart: ${r.yea} yea, ${r.nay} nay`}>
+        <svg class="hemi" viewBox="-106 -106 212 114" role="group" aria-label={`Seat chart: ${r.yea} yes, ${r.nay} no. Each seat links to that member; use the arrow keys to move between seats.`}>
           <path d="M -104 4 A 104 104 0 0 1 104 4" class="arc" />
           {
             seated.map((v, i) => (
-              <a href={`/members/${v.bioguide_id}`} data-id={v.bioguide_id} aria-label={`${v.full_name}: ${POSITION_LABELS[v.position] ?? v.position}`}>
-                <circle cx={seats[i].x.toFixed(2)} cy={seats[i].y.toFixed(2)} r={dot.toFixed(2)} class={cls(v)} style={`--s:${i}`} />
+              <a href={`/members/${v.bioguide_id}`} data-id={v.bioguide_id} aria-label={`${v.full_name}, ${PARTY_NAMES[partyOf(v)]}: ${v.position === "yea" ? "yes" : v.position === "nay" ? "no" : (POSITION_LABELS[v.position] ?? v.position).toLowerCase()}`}>
+                <circle cx={seats[i].x.toFixed(2)} cy={seats[i].y.toFixed(2)} r={dot.toFixed(2)} class={cls(v)} style={`--t:${(i / seated.length).toFixed(3)}`} />
               </a>
             ))
           }
           <rect x="-9" y="-3" width="18" height="3" class="dais" />
         </svg>
 
-        <div class="legend label">
-          <span>Legend</span>
-          {
-            ["D", "R", "I"].map((p) => (
-              <span class="lg">
-                <b class={`party ${partyClass(p)}`}>{p === "D" ? "DEM" : p === "R" ? "REP" : "IND"}</b>
-                <i class={`k ${partyClass(p)} y`} /> Y <i class={`k ${partyClass(p)} n`} /> N <i class={`k ${partyClass(p)} nv`} /> NV
-              </span>
-            ))
-          }
+        {/* What a dot's fill means, then what its color means: two short keys instead of a code per party. */}
+        <div class="legend label" role="group" aria-label="How to read the chart">
+          <span class="lg-group">
+            <span class="lg"><i class="k y" /> Yes</span>
+            <span class="lg"><i class="k n" /> No</span>
+            <span class="lg"><i class="k nv" /> Didn't vote</span>
+          </span>
+          <span class="lg-group">
+            {
+              parties.map((p) => (
+                <span class="lg">
+                  <i class={`k ${partyClass(p.p)} y`} /> <span class={`party ${partyClass(p.p)}`}>{PARTY_NAMES[p.p]}</span>
+                </span>
+              ))
+            }
+          </span>
         </div>
+        <p class="note tip">Click a seat to open that member's page. With the keyboard, Tab to the chart and use the arrow keys.</p>
+        <p class="note touch-tip">Tap a seat to see who sat there; tap it again to open their page. The Member list tab shows everyone's vote.</p>
       </div>
 
-      <aside class="inspector" aria-live="polite">
-        <p class="label insp-head">Node_inspector <span class="faint">+</span></p>
+      <aside class="inspector" aria-label="Selected member">
+        <p class="label insp-head">Selected member</p>
         <div class="viewfinder">
           <img alt="" hidden data-i="photo" />
           <span class="cross" aria-hidden="true"></span>
-          <span class="label nosignal" data-i="signal">No signal</span>
+          <span class="label nosignal" data-i="signal">No one selected</span>
         </div>
-        <p class="insp-name" data-i="name">Awaiting target…</p>
+        <p class="insp-name" data-i="name">Point at a seat to see who sat there</p>
         <div class="kv">
-          <div><span class="label">District</span><div class="v" data-i="district">--</div></div>
+          <div><span class="label">{r.chamber === "senate" ? "State" : "District"}</span><div class="v" data-i="district">--</div></div>
           <div><span class="label">Party</span><div class="v" data-i="party">--</div></div>
-        </div>
-        <div class="insp-vote">
-          <span class="label">Vote cast</span>
-          <div><span class="status-tag neutral" data-i="vote">--</span></div>
+          <div class="insp-vote"><span class="label">Their vote</span><div class="v"><span class="status-tag neutral" data-i="vote">--</span></div></div>
         </div>
         <div class="rows-list">
-          <div><span>Party alignment</span><span data-i="unity">--</span></div>
-          <div><span>Sponsored</span><span data-i="sponsored">-- bills</span></div>
-          <div><span>Tenure</span><span data-i="tenure">--</span></div>
+          <div><span><Term tip={UNITY_TIP}>Votes with party</Term></span><span data-i="unity">--</span></div>
+          <div><span>Bills sponsored</span><span data-i="sponsored">--</span></div>
+          <div><span>In Congress</span><span data-i="tenure">--</span></div>
         </div>
-        <p class="label faint tip">Hover a seat · click to open the member</p>
+        <a class="insp-open" data-i="open" href="#" hidden>Open their page <span aria-hidden="true">→</span></a>
       </aside>
+
+      {/* Anything the page adds about the chart (the vote page's log) sits under it. */}
+      {
+        Astro.slots.has("log") && (
+          <div class="hemi-log">
+            <slot name="log" />
+          </div>
+        )
+      }
     </div>
   </div>
 
-  <!-- Registry -->
-  <div class="tab" data-pane="registry" hidden>
+  <!-- Member list -->
+  <div class="tab-pane" id="vote-list" data-pane="registry">
     <div class="reg-top">
-      <p class="label reg-title">{heading} <span class="faint">//</span> {billTitle ?? r.question}</p>
-      <p class="label center">[ Roll_call_analysis // Final_tally ]</p>
+      <p class="label center">Final count</p>
       <div class="tally">
-        <div><span class="label">Yea</span><span class="tnum" data-count={r.yea}>{r.yea}</span></div>
-        <span class="margin label">Margin {r.yea - r.nay >= 0 ? "+" : ""}{r.yea - r.nay}</span>
-        <div><span class="label">Nay</span><span class="tnum dimnum" data-count={r.nay}>{r.nay}</span></div>
+        <div><span class="label">Yes</span><span class="tnum" data-count={r.yea}>{r.yea}</span></div>
+        <span class="margin label">{diff === 0 ? "Tied" : `${Math.abs(diff)} more ${diff > 0 ? "yes" : "no"}`}</span>
+        <div><span class="label">No</span><span class="tnum dimnum" data-count={r.nay}>{r.nay}</span></div>
       </div>
-      <div class="meter" style={`--yea:${voting ? (100 * r.yea) / voting : 0}%;--thr:${voting ? Math.min(100, (100 * t.needed) / voting) : 50}%`}>
-        <span class="fill"></span><span class="thr"></span>
-      </div>
-      <div class="meter-scale label"><span>0</span><span>{t.needed} threshold ({t.label})</span><span>{voting}</span></div>
+      <TallyBar votes={votes} needed={t.needed} rule={ruleInfo(t).name} height={26} />
 
       <div class="parties">
         {
@@ -130,12 +165,12 @@ const PARTY_NAMES: Record<string, string> = { D: "Democrat", R: "Republican", I:
             <div class={`pbox ${partyClass(p.p)}`}>
               <div class="pbox-head label">
                 <span class={`party ${partyClass(p.p)}`}>{PARTY_NAMES[p.p]}</span>
-                <span>{p.total} votes</span>
+                <span>{p.total} {p.total === 1 ? "member" : "members"}</span>
               </div>
               <div class="pbar"><span style={`width:${p.total ? (100 * p.yea) / p.total : 0}%`} /></div>
               <div class="pbox-foot label">
-                <span>Yea: <b>{p.yea}</b></span>
-                <span>Nay: <b>{p.nay}</b></span>
+                <span>Yes <b>{p.yea}</b></span>
+                <span>No <b>{p.nay}</b></span>
               </div>
             </div>
           ))
@@ -144,18 +179,18 @@ const PARTY_NAMES: Record<string, string> = { D: "Democrat", R: "Republican", I:
     </div>
 
     <div class="reg-tools">
-      <span class="label">Member_registry: {votes.length} records</span>
-      <div class="toggles" data-filter-group>
-        <button class="toggle active" type="button" data-show="all">All</button>
-        <button class="toggle" type="button" data-show="yea">Yea</button>
-        <button class="toggle" type="button" data-show="nay">Nay</button>
-        <button class="toggle" type="button" data-show="absent">NV</button>
+      <span class="label" id={`show-${r.id}`}>Show</span>
+      <div class="toggles" data-filter-group role="group" aria-labelledby={`show-${r.id}`}>
+        <button class="toggle active" type="button" data-show="all" aria-pressed="true">Everyone <span class="cnt">{votes.length}</span></button>
+        <button class="toggle" type="button" data-show="yea" aria-pressed="false">Yes <span class="cnt">{r.yea}</span></button>
+        <button class="toggle" type="button" data-show="nay" aria-pressed="false">No <span class="cnt">{r.nay}</span></button>
+        {absent > 0 && <button class="toggle" type="button" data-show="absent" aria-pressed="false">Didn't vote <span class="cnt">{absent}</span></button>}
       </div>
-      <input type="search" placeholder="Search by name, state…" data-search aria-label="Search members" />
+      <input type="search" placeholder="Search by name or state" data-search aria-label="Find a member by name or state" />
     </div>
     <div class="table-scroll">
       <table class="rtable registry">
-        <thead><tr><th>Representative</th><th>Party</th><th>State</th><th>District</th><th class="num">Vote_status</th></tr></thead>
+        <thead><tr><th>{r.chamber === "senate" ? "Senator" : "Representative"}</th><th>Party</th><th>State</th><th>District</th><th class="num">Their vote</th></tr></thead>
         <tbody>
           {
             registry.map((v) => (
@@ -163,12 +198,12 @@ const PARTY_NAMES: Record<string, string> = { D: "Democrat", R: "Republican", I:
                 data-href={`/members/${v.bioguide_id}`}
                 data-id={v.bioguide_id}
                 data-pos={v.position === "yea" ? "yea" : v.position === "nay" ? "nay" : "absent"}
-                data-q={`${v.full_name} ${v.state} ${memberTag({ ...v, chamber: r.chamber })}`.toLowerCase()}
+                data-q={`${v.full_name} ${v.state} ${STATES[v.state ?? ""] ?? ""} ${memberTag({ ...v, chamber: r.chamber })}`.toLowerCase()}
               >
-                <td>{v.full_name}</td>
+                <td><a href={`/members/${v.bioguide_id}`}>{v.full_name}</a></td>
                 <td class="mono"><span class={`party ${partyClass(partyOf(v))}`}>{PARTY_NAMES[partyOf(v)]}</span></td>
                 <td class="mono">{v.state}</td>
-                <td class="mono">{r.chamber === "house" ? (v.district === 0 ? "AL" : (v.district ?? "--")) : "--"}</td>
+                <td class="mono">{r.chamber === "house" ? (v.district === 0 ? "At large" : (v.district ?? "--")) : "--"}</td>
                 <td class="num">
                   <span class={`status-tag ${v.position === "yea" ? "ok" : v.position === "nay" ? "alert" : "neutral"}`}>
                     {v.position === "other" ? v.detail : POSITION_LABELS[v.position]}
@@ -180,18 +215,19 @@ const PARTY_NAMES: Record<string, string> = { D: "Democrat", R: "Republican", I:
         </tbody>
       </table>
     </div>
-    <p class="pager"><span data-range>Records</span><span><button class="toggle" type="button" data-prev>‹ Prev</button> <span data-page></span> <button class="toggle" type="button" data-next>Next ›</button></span></p>
+    <p class="empty" data-none hidden>No members match. Check the spelling, try a state name, or choose Everyone.</p>
+    <p class="pager"><span data-range aria-live="polite">Members</span><span class="pager-nav"><button class="toggle" type="button" data-prev>‹ Previous</button> <span data-page></span> <button class="toggle" type="button" data-next>Next ›</button></span></p>
   </div>
 
   <script type="application/json" data-seats set:html={JSON.stringify(seatData)} />
 </div>
 
 <script>
-  import { countUp, scramble } from "../scripts/fx";
+  import { countUp, fullArrival, go, reducedMotion } from "../scripts/fx";
 
   type Seat = { n: string; p: string; s: string; d: number | null; v: string; x: string | null; ph: string | null; u: number | null; sp: number | null; t: number | null; si: string | null };
-  const PARTY: Record<string, string> = { D: "DEM", R: "REP", I: "IND" };
-  const VOTE: Record<string, string> = { yea: "YEA", nay: "NAY", present: "PRESENT", not_voting: "NOT VOTING" };
+  const PARTY: Record<string, string> = { D: "Democrat", R: "Republican", I: "Independent" };
+  const VOTE: Record<string, string> = { yea: "Yes", nay: "No", present: "Present", not_voting: "Didn't vote" };
 
   for (const viz of document.querySelectorAll<HTMLElement>("[data-viz]")) {
     const seats = JSON.parse(viz.querySelector("script[data-seats]")?.textContent ?? "{}") as Record<string, Seat>;
@@ -200,51 +236,191 @@ const PARTY_NAMES: Record<string, string> = { D: "Democrat", R: "Republican", I:
     // Seats appear one after another, left to right.
     viz.querySelectorAll<SVGCircleElement>("circle.seat").forEach((c) => c.classList.add("seat-in"));
 
-    // Tabs
-    const tabs = viz.querySelectorAll<HTMLButtonElement>("[data-tab]");
-    tabs.forEach((tab) =>
-      tab.addEventListener("click", () => {
-        tabs.forEach((t) => {
-          t.classList.toggle("active", t === tab);
-          t.setAttribute("aria-selected", String(t === tab));
-        });
-        viz.querySelectorAll<HTMLElement>("[data-pane]").forEach((p) => (p.hidden = p.dataset.pane !== tab.dataset.tab));
-        if (tab.dataset.tab === "registry") viz.querySelectorAll<HTMLElement>("[data-pane=registry] [data-count]").forEach((el) => countUp(el, 700));
-      }),
-    );
+    // The tabs themselves are run by initTabs (fx.ts). On the first page of a visit the
+    // list's tally counts up the first time it opens; after that the numbers just show.
+    let counted = !fullArrival;
+    viz.querySelector("[data-list-tab]")?.addEventListener("click", () => {
+      if (counted) return;
+      counted = true;
+      viz.querySelectorAll<HTMLElement>("[data-pane=registry] [data-count]").forEach((el) => countUp(el, 600));
+    });
 
-    // Inspector: show a member when their seat is hovered or focused.
+    // Inspector: show a member when their seat is pointed at or focused. The text changes
+    // at once (no decoding, so moving across seats stays calm); the portrait scans in once
+    // it has loaded, and the old one dims meanwhile so it never sits under the wrong name.
     const field = (name: string) => viz.querySelector<HTMLElement>(`[data-i="${name}"]`);
     const photo = field("photo") as HTMLImageElement | null;
     let current = "";
+    photo?.addEventListener("load", () => {
+      photo.classList.remove("loading", "flash");
+      void photo.offsetWidth;
+      photo.classList.add("flash");
+    });
+    photo?.addEventListener("error", () => {
+      photo.classList.remove("loading");
+      photo.hidden = true;
+      field("signal")!.hidden = false;
+    });
     const show = (id: string) => {
       const m = seats[id];
       if (!m || id === current) return;
       current = id;
-      const district = chamber === "house" ? `${m.s}-${m.d === 0 ? "AL" : (m.d ?? "?")}` : m.s;
-      scramble(field("name")!, m.n.toUpperCase(), 380);
-      scramble(field("district")!, district, 300);
-      scramble(field("party")!, PARTY[m.p] ?? m.p, 300);
+      const district = chamber === "house" ? (m.d === 0 ? `${m.s} at large` : `${m.s}-${m.d ?? "?"}`) : m.s;
+      field("name")!.textContent = m.n;
+      field("district")!.textContent = district;
+      field("party")!.textContent = PARTY[m.p] ?? m.p;
       const vote = field("vote")!;
-      vote.textContent = m.v === "other" ? (m.x ?? "OTHER").toUpperCase() : (VOTE[m.v] ?? m.v.toUpperCase());
+      vote.textContent = m.v === "other" ? (m.x ?? "Other") : (VOTE[m.v] ?? m.v);
       vote.className = `status-tag ${m.v === "yea" ? "ok" : m.v === "nay" ? "alert" : "neutral"}`;
-      scramble(field("unity")!, m.u === null ? "--" : `${m.u}% WITH PARTY`, 320);
-      scramble(field("sponsored")!, m.sp === null ? "--" : `${m.sp} BILLS`, 320);
-      scramble(field("tenure")!, m.t ? `${m.t} TERM${m.t === 1 ? "" : "S"} · SINCE ${m.si ?? "----"}` : "--", 320);
-      field("signal")!.hidden = Boolean(m.ph);
-      if (photo) {
-        if (m.ph) {
-          photo.src = m.ph;
-          photo.hidden = false;
-          photo.classList.remove("flash");
-          void photo.offsetWidth;
-          photo.classList.add("flash");
-        } else photo.hidden = true;
+      field("unity")!.textContent = m.u === null ? "--" : `${m.u}%`;
+      field("sponsored")!.textContent = m.sp === null ? "--" : String(m.sp);
+      field("tenure")!.textContent = m.t ? `Since ${m.si ?? "?"} · ${m.t} term${m.t === 1 ? "" : "s"}` : "--";
+      const open = field("open") as HTMLAnchorElement | null;
+      if (open) {
+        open.href = `/members/${id}`;
+        open.hidden = false;
       }
+      // Once someone is selected, an empty frame means they have no photo on file.
+      field("signal")!.textContent = "No photo";
+      field("signal")!.hidden = Boolean(m.ph);
+      if (!photo) return;
+      if (!m.ph) {
+        photo.hidden = true;
+        return;
+      }
+      const next = new URL(m.ph, location.href).href;
+      if (photo.src !== next) {
+        photo.classList.add("loading");
+        photo.src = next;
+      }
+      photo.hidden = false;
     };
-    viz.querySelectorAll<SVGAElement>("svg.hemi a").forEach((a) => {
-      a.addEventListener("mouseenter", () => show(a.dataset.id!));
-      a.addEventListener("focus", () => show(a.dataset.id!));
+
+    // The seat under the pointer, or the nearest one within about a seat's width, so the
+    // small dots and the gaps between them are easy to point at.
+    const svg = viz.querySelector<SVGSVGElement>("svg.hemi");
+    const links = [...viz.querySelectorAll<SVGAElement>("svg.hemi a")];
+    const centers = links.map((a) => {
+      const c = a.querySelector("circle")!;
+      return { a, c, x: Number(c.getAttribute("cx")), y: Number(c.getAttribute("cy")), r: Number(c.getAttribute("r")) };
+    });
+    let hot: (typeof centers)[number] | null = null;
+    const setHot = (seat: typeof hot) => {
+      if (seat === hot) return;
+      hot?.c.classList.remove("hot");
+      hot = seat;
+      svg?.classList.toggle("pointing", Boolean(seat));
+      if (!seat) return;
+      seat.c.classList.add("hot");
+      show(seat.a.dataset.id!);
+    };
+    // The nearest seat to a point on screen, within `reach` seat radii.
+    const nearest = (clientX: number, clientY: number, reach: number) => {
+      const m = svg?.getScreenCTM();
+      if (!m) return null;
+      const p = new DOMPoint(clientX, clientY).matrixTransform(m.inverse());
+      let best: typeof hot = null;
+      let bestD = Infinity;
+      for (const s of centers) {
+        const d = (s.x - p.x) ** 2 + (s.y - p.y) ** 2;
+        if (d < bestD) {
+          bestD = d;
+          best = s;
+        }
+      }
+      return best && Math.sqrt(bestD) <= best.r * reach ? best : null;
+    };
+    let frame = 0;
+    svg?.addEventListener("pointermove", (event) => {
+      if (event.pointerType !== "mouse" || frame) return;
+      const { clientX, clientY } = event;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        setHot(nearest(clientX, clientY, 2.4));
+      });
+    });
+    svg?.addEventListener("pointerleave", (event) => {
+      if (event.pointerType !== "mouse") return; // a finger lifting keeps its chosen seat
+      cancelAnimationFrame(frame);
+      frame = 0;
+      setHot(null);
+    });
+    // Choosing a seat by tap or keyboard also reveals the preview where it's normally hidden
+    // (touch screens and phones), just below the chart.
+    const inspector = viz.querySelector<HTMLElement>(".inspector");
+    const pick = (seat: NonNullable<typeof hot>, reveal: boolean) => {
+      setHot(seat);
+      const wasHidden = !viz.classList.contains("picked") && inspector?.offsetParent === null;
+      viz.classList.add("picked");
+      if (reveal && wasHidden) inspector?.scrollIntoView({ block: "nearest", behavior: reducedMotion ? "auto" : "smooth" });
+    };
+
+    // Mouse: a click in the gap next to a highlighted seat opens that member, like a click on
+    // the seat. Touch: the first tap on (or near) a seat shows who sat there; a second tap on
+    // the same seat opens their page.
+    let pointer = "mouse";
+    let tapped: (typeof centers)[number] | null = null;
+    svg?.addEventListener("pointerdown", (event) => (pointer = event.pointerType));
+    svg?.addEventListener("click", (event) => {
+      const onLink = (event.target as Element).closest("a");
+      if (event.detail === 0) return; // Enter on a focused seat: follow its link
+      if (pointer === "mouse") {
+        if (hot && !onLink) go(hot.a.href.baseVal);
+        return;
+      }
+      const seat = nearest(event.clientX, event.clientY, 3);
+      if (!seat) return;
+      if (seat === tapped) {
+        if (!onLink) go(seat.a.href.baseVal);
+        return;
+      }
+      event.preventDefault();
+      tapped = seat;
+      pick(seat, true);
+    });
+
+    // Keyboard: the chart is a single Tab stop. The arrow keys move along the arc (left and
+    // right) or to the next row out or in (up and down); Enter opens the member.
+    const radius = centers.map((s) => Math.round(Math.hypot(s.x, s.y) * 10) / 10);
+    const angle = centers.map((s) => Math.atan2(-s.y, s.x));
+    const rings = [...new Set(radius)].sort((a, b) => a - b);
+    const ringStep = (i: number, step: number) => {
+      const target = rings[rings.indexOf(radius[i]) + step];
+      if (target === undefined) return i;
+      let best = i;
+      let bestD = Infinity;
+      radius.forEach((r, k) => {
+        const d = Math.abs(angle[k] - angle[i]);
+        if (r === target && d < bestD) {
+          bestD = d;
+          best = k;
+        }
+      });
+      return best;
+    };
+    links.forEach((a, i) => a.setAttribute("tabindex", i === 0 ? "0" : "-1"));
+    links.forEach((a, i) =>
+      a.addEventListener("focus", () => {
+        links.forEach((x) => x.setAttribute("tabindex", x === a ? "0" : "-1"));
+        // Only keyboard focus picks; a tap or click focuses the link too, and is handled above.
+        if (a.matches(":focus-visible")) pick(centers[i], false);
+      }),
+    );
+    svg?.addEventListener("keydown", (event) => {
+      const i = links.indexOf(document.activeElement as SVGAElement);
+      if (i < 0) return;
+      const keys: Record<string, number> = {
+        ArrowRight: Math.min(links.length - 1, i + 1),
+        ArrowLeft: Math.max(0, i - 1),
+        ArrowUp: ringStep(i, 1),
+        ArrowDown: ringStep(i, -1),
+        Home: 0,
+        End: links.length - 1,
+      };
+      const n = keys[event.key];
+      if (n === undefined) return;
+      event.preventDefault();
+      links[n].focus();
     });
 
     // Registry: filter, search, and pages of 15.
@@ -262,9 +438,12 @@ const PARTY_NAMES: Record<string, string> = { D: "Democrat", R: "Republican", I:
       rows.forEach((r) => (r.hidden = true));
       matching.slice(page * PAGE, page * PAGE + PAGE).forEach((r) => (r.hidden = false));
       viz.querySelector("[data-range]")!.textContent = matching.length
-        ? `Records ${page * PAGE + 1}–${Math.min(matching.length, page * PAGE + PAGE)} of ${matching.length}`
-        : "No records";
-      viz.querySelector("[data-page]")!.textContent = `Page ${page + 1} / ${pages}`;
+        ? `Showing ${page * PAGE + 1}–${Math.min(matching.length, page * PAGE + PAGE)} of ${matching.length}`
+        : "No members match";
+      viz.querySelector("[data-page]")!.textContent = `Page ${page + 1} of ${pages}`;
+      viz.querySelector<HTMLElement>("[data-none]")!.hidden = matching.length > 0;
+      viz.querySelector<HTMLButtonElement>("[data-prev]")!.disabled = page === 0;
+      viz.querySelector<HTMLButtonElement>("[data-next]")!.disabled = page >= pages - 1;
     };
     search?.addEventListener("input", () => {
       page = 0;
@@ -274,18 +453,24 @@ const PARTY_NAMES: Record<string, string> = { D: "Democrat", R: "Republican", I:
       b.addEventListener("click", () => {
         filter = b.dataset.show!;
         page = 0;
-        filterButtons.forEach((x) => x.classList.toggle("active", x === b));
+        filterButtons.forEach((x) => {
+          x.classList.toggle("active", x === b);
+          x.setAttribute("aria-pressed", String(x === b));
+        });
         render();
       }),
     );
-    viz.querySelector("[data-prev]")?.addEventListener("click", () => {
-      page = Math.max(0, page - 1);
+    // Prev and Next fade the new page of rows in briefly, so the change registers.
+    const body = rows[0]?.parentElement;
+    const turn = (to: number) => {
+      page = to;
       render();
-    });
-    viz.querySelector("[data-next]")?.addEventListener("click", () => {
-      page += 1;
-      render();
-    });
+      body?.classList.remove("page-in");
+      void body?.offsetWidth;
+      body?.classList.add("page-in");
+    };
+    viz.querySelector("[data-prev]")?.addEventListener("click", () => turn(Math.max(0, page - 1)));
+    viz.querySelector("[data-next]")?.addEventListener("click", () => turn(page + 1));
     render();
   }
 </script>
@@ -294,22 +479,21 @@ const PARTY_NAMES: Record<string, string> = { D: "Democrat", R: "Republican", I:
   .viz {
     position: relative;
   }
-  .viz-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 10px var(--pad);
-    border-bottom: 1px solid var(--line);
+  /* A lighter tab bar than the page's own, since on bill pages it sits inside a tab. */
+  .viz > .tabbar {
+    background: transparent;
   }
-  .viz-head .label::before {
-    content: "";
-    display: inline-block;
-    width: 6px;
-    height: 6px;
-    margin-right: 10px;
-    vertical-align: 1px;
-    background: var(--muted);
+  .viz > .tabbar .tab-link {
+    min-height: 48px;
+  }
+  .viz-head {
+    padding: var(--pad) var(--pad) 18px;
+  }
+  .viz-head > :last-child {
+    margin-bottom: 0;
+  }
+  .viz-head + .tabbar {
+    border-top: 1px solid var(--line);
   }
   .hemi-layout {
     display: grid;
@@ -321,7 +505,7 @@ const PARTY_NAMES: Record<string, string> = { D: "Democrat", R: "Republican", I:
     display: flex;
     align-items: center;
     gap: 10px;
-    margin: 6px 0 12px;
+    margin: 4px 0 12px;
   }
   .sq-mini {
     width: 7px;
@@ -335,18 +519,65 @@ const PARTY_NAMES: Record<string, string> = { D: "Democrat", R: "Republican", I:
     margin: 0 0 10px;
   }
   .bill-title {
+    display: block;
     font-size: 1.12rem;
     color: #c9c9c9;
     max-width: 60ch;
     margin-bottom: 8px;
   }
-  .question {
-    margin-bottom: 4px;
+  a.bill-title {
+    width: fit-content;
+    text-decoration: underline;
+    text-decoration-color: var(--faint);
+    text-underline-offset: 4px;
   }
+  a.bill-title:hover {
+    color: var(--bright);
+    text-decoration-color: var(--bright);
+  }
+  .question-big {
+    max-width: 60ch;
+    margin: 0 0 6px;
+    font-size: 1.12rem;
+    color: var(--bright);
+  }
+  .question {
+    max-width: 60ch;
+    margin-bottom: 4px;
+    font-size: 0.98rem;
+    line-height: 1.45;
+    color: var(--soft);
+  }
+  .question .label {
+    margin-right: 6px;
+  }
+  .quick-result {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    margin: 10px 0 4px;
+    font: 400 var(--fs-sm)/1.3 var(--mono);
+    color: var(--muted);
+  }
+  .quick-result b {
+    font-weight: 400;
+    color: var(--bright);
+  }
+  .quick-result.narrow-only {
+    display: none;
+  }
+  @media (max-width: 860px) {
+    .quick-result.narrow-only {
+      display: flex;
+    }
+  }
+  /* As large as the column allows, up to a size where the whole arc still fits on screen:
+     bigger seats are easier to point at. */
   .hemi {
     display: block;
     width: 100%;
-    max-width: 640px;
+    max-width: 720px;
     margin: 4px auto 0;
     overflow: visible;
   }
@@ -387,16 +618,21 @@ const PARTY_NAMES: Record<string, string> = { D: "Democrat", R: "Republican", I:
     opacity: 0.25;
   }
   .hemi a:hover .seat,
-  .hemi a:focus .seat {
+  .hemi a:focus .seat,
+  .seat.hot {
     stroke: var(--bright);
     stroke-width: 2;
   }
   .hemi a:focus {
     outline: none;
   }
+  .hemi.pointing {
+    cursor: pointer;
+  }
+  /* One sweep from left to right in about half a second, House or Senate. */
   :global(.fx) .seat.seat-in {
-    animation: seat-on 220ms ease both;
-    animation-delay: calc(200ms + var(--s) * 2.2ms);
+    animation: seat-on calc(200ms * var(--fx-pace)) ease-out both;
+    animation-delay: calc(var(--fx-start) + var(--t) * 560ms * var(--fx-pace));
   }
   @keyframes seat-on {
     from {
@@ -411,24 +647,27 @@ const PARTY_NAMES: Record<string, string> = { D: "Democrat", R: "Republican", I:
   .legend {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px 22px;
+    gap: 10px 28px;
     align-items: center;
     margin-top: 14px;
     padding: 10px 14px;
     border: 1px solid var(--line);
   }
+  .lg-group {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+  }
   .lg {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-  }
-  .lg b {
-    margin-right: 4px;
+    gap: 7px;
   }
   .k {
+    --c: var(--soft);
     display: inline-block;
-    width: 9px;
-    height: 9px;
+    width: 10px;
+    height: 10px;
     border-radius: 50%;
     border: 1px solid;
   }
@@ -483,8 +722,23 @@ const PARTY_NAMES: Record<string, string> = { D: "Democrat", R: "Republican", I:
     object-fit: cover;
     filter: grayscale(1) contrast(1.08);
   }
+  /* The portrait swaps in with a quick scan once it has loaded; until then the old one dims. */
+  .viewfinder img {
+    transition: opacity 120ms ease;
+  }
+  .viewfinder img.loading {
+    opacity: 0.25;
+  }
   :global(.fx) .viewfinder img.flash {
-    animation: acquire 360ms ease-out;
+    animation: acquire 220ms ease-out;
+  }
+  :global(.fx) tbody.page-in {
+    animation: page-in 180ms ease-out;
+  }
+  @keyframes page-in {
+    from {
+      opacity: 0.15;
+    }
   }
   @keyframes acquire {
     0% {
@@ -515,27 +769,70 @@ const PARTY_NAMES: Record<string, string> = { D: "Democrat", R: "Republican", I:
   }
   .insp-name {
     margin: 12px 0 10px;
-    font: 500 1.05rem/1.15 var(--font);
+    font: 500 1.1rem/1.25 var(--font);
     color: var(--bright);
     min-height: 2.3em;
   }
-  .insp-vote {
-    margin: 12px 0;
+  .inspector .kv {
+    margin-bottom: 6px;
   }
-  .insp-vote div {
-    margin-top: 6px;
+  .insp-vote {
+    grid-column: 1 / -1;
   }
   .tip {
-    margin: 10px 0 0;
+    margin: 12px 0 0;
+  }
+  /* The log under the chart (vote pages). */
+  .hemi-log {
+    border-top: 1px solid var(--line);
+  }
+  .hemi-log :global(.term) {
+    padding: 14px 0 0;
+  }
+  /* Wide screens: the preview runs down the right of the chart and its log, with a shorter
+     portrait, so the chart column doesn't end far above it and leave a blank band. (Touch
+     screens show the preview below the chart instead; see further down.) */
+  @media (min-width: 1241px) and (hover: hover) {
+    .hemi-layout {
+      grid-template-rows: auto 1fr;
+    }
+    .hemi-main {
+      grid-area: 1 / 1;
+    }
+    .hemi-log {
+      grid-area: 2 / 1;
+      align-self: start;
+    }
+    .hemi-layout .inspector {
+      grid-area: 1 / 2 / 3 / 3;
+    }
+    .viewfinder {
+      aspect-ratio: 4 / 3;
+    }
+    .viewfinder img {
+      object-position: 50% 20%;
+    }
+  }
+  .insp-open {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 40px;
+    margin-top: 6px;
+    font: 500 var(--fs-sm) var(--font);
+    color: var(--bright);
+    text-decoration: underline;
+    text-decoration-color: var(--faint);
+    text-underline-offset: 4px;
+  }
+  .insp-open:hover {
+    text-decoration-color: var(--bright);
   }
 
   /* Registry */
   .reg-top {
     padding: var(--pad);
     border-bottom: 1px solid var(--line);
-  }
-  .reg-title {
-    margin-bottom: 18px;
   }
   .center {
     text-align: center;
@@ -567,39 +864,6 @@ const PARTY_NAMES: Record<string, string> = { D: "Democrat", R: "Republican", I:
     padding: 8px 12px;
     color: var(--bright);
   }
-  .meter {
-    position: relative;
-    height: 22px;
-    border: 1px solid var(--line-2);
-    background: repeating-linear-gradient(90deg, #1b1b1b 0 2px, transparent 2px 6px);
-  }
-  .fill {
-    position: absolute;
-    inset: 0 auto 0 0;
-    width: var(--yea);
-    background: repeating-linear-gradient(90deg, #e9e9e9 0 2px, transparent 2px 6px);
-  }
-  :global(.fx) .fill {
-    animation: grow 900ms var(--ease) both 200ms;
-  }
-  @keyframes grow {
-    from {
-      width: 0;
-    }
-  }
-  .thr {
-    position: absolute;
-    top: -4px;
-    bottom: -4px;
-    left: var(--thr);
-    width: 2px;
-    background: var(--alert);
-  }
-  .meter-scale {
-    display: flex;
-    justify-content: space-between;
-    margin-top: 6px;
-  }
   .parties {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -612,6 +876,7 @@ const PARTY_NAMES: Record<string, string> = { D: "Democrat", R: "Republican", I:
   }
   .pbox.dem {
     --c: var(--dem);
+    --ink: var(--dem-ink);
     border-color: rgb(74 108 255 / 45%);
     background: rgb(74 108 255 / 6%);
   }
@@ -632,7 +897,7 @@ const PARTY_NAMES: Record<string, string> = { D: "Democrat", R: "Republican", I:
   }
   .pbox-foot b {
     font-weight: 400;
-    color: var(--c);
+    color: var(--ink, var(--c));
   }
   .pbar {
     height: 3px;
@@ -652,18 +917,28 @@ const PARTY_NAMES: Record<string, string> = { D: "Democrat", R: "Republican", I:
     padding: 12px var(--pad);
     border-bottom: 1px solid var(--line);
   }
-  .reg-tools .label {
-    flex: 1 1 200px;
-  }
   .reg-tools input {
     flex: 0 1 260px;
+    margin-left: auto;
     padding: 8px 11px;
   }
   .registry tbody tr[hidden] {
     display: none;
   }
+  .cnt {
+    font: 400 var(--fs-xs) var(--mono);
+    opacity: 0.75;
+  }
 
-  @media (max-width: 1240px) {
+  .pager-nav {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  /* Below the chart (narrower screens, and touch screens of any width, where it appears after
+     a tap): a small portrait beside the name. */
+  @media (max-width: 1240px), (hover: none) {
     .hemi-layout {
       grid-template-columns: 1fr;
     }
@@ -673,11 +948,117 @@ const PARTY_NAMES: Record<string, string> = { D: "Democrat", R: "Republican", I:
       gap: 0 14px;
     }
     .insp-head,
-    .tip {
+    .insp-open {
       grid-column: 1 / -1;
     }
     .viewfinder {
-      grid-row: span 4;
+      grid-row: span 3;
+    }
+    /* Below the chart there's room across: the details sit in rows of three, so the
+       preview stays short. */
+    .inspector .kv,
+    .inspector .rows-list {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0 16px;
+    }
+    .insp-vote {
+      grid-column: auto;
+    }
+    .inspector .rows-list > div {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+    }
+    .inspector .rows-list > div > :last-child {
+      text-align: left;
+    }
+  }
+  /* Touch screens can't point at a seat, so the preview, which would sit empty between the
+     chart and the result, gives way to a one-line hint until a seat is tapped. */
+  .touch-tip {
+    display: none;
+    margin-top: 12px;
+  }
+  @media (hover: none), (max-width: 640px) {
+    .hemi-layout {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .hemi-layout .inspector {
+      display: none;
+    }
+    /* Once a seat is tapped (or reached with the keyboard), the preview appears below. */
+    .picked .hemi-layout .inspector {
+      display: grid;
+    }
+    .tip {
+      display: none;
+    }
+    .touch-tip {
+      display: block;
+    }
+  }
+  /* Phones: a smaller portrait beside the name, and the details as plain rows. */
+  @media (max-width: 640px) {
+    .picked .hemi-layout .inspector {
+      grid-template-columns: 84px minmax(0, 1fr);
+    }
+    .inspector .kv {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .insp-vote {
+      grid-column: 1 / -1;
+    }
+    .inspector .rows-list {
+      grid-column: 1 / -1;
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .inspector .rows-list > div {
+      flex-direction: row;
+      align-items: baseline;
+    }
+    .inspector .rows-list > div > :last-child {
+      text-align: right;
+    }
+  }
+  /* Narrow two-column layouts (the vote page from 861 to 1000px): tighter cells, so the five
+     columns fit without scrolling sideways. */
+  @media (min-width: 641px) and (max-width: 1000px) {
+    .registry th,
+    .registry td {
+      padding-left: 10px;
+      padding-right: 10px;
+    }
+  }
+  /* Phones: each member in the list is a two-line card (name and vote, then party, state,
+     and district) instead of a five-column table that scrolls sideways. */
+  @media (max-width: 640px) {
+    .registry thead {
+      display: none;
+    }
+    .registry tbody tr {
+      display: grid;
+      grid-template-columns: auto auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 4px 12px;
+      padding: 11px var(--pad);
+      border-bottom: 1px solid var(--line);
+    }
+    .registry td {
+      padding: 0;
+      border: 0;
+    }
+    .registry td:first-child {
+      grid-column: 1 / 4;
+      grid-row: 1;
+      color: var(--bright);
+    }
+    .registry td.num {
+      grid-column: 4;
+      grid-row: 1 / span 2;
+    }
+    .reg-tools input {
+      flex: 1 1 100%;
     }
   }
 </style>

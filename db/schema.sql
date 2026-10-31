@@ -64,8 +64,9 @@ CREATE TABLE IF NOT EXISTS bills (
   crs_summary           TEXT,              -- HTML written by the Congressional Research Service
   crs_summary_version   TEXT,
   crs_summary_date      TEXT,
-  ai_summary            TEXT,              -- filled in Phase 4
+  ai_summary            TEXT,              -- JSON from summaries/bills/<id>.json (see src/sources/summaries.ts)
   ai_summary_updated_at TEXT,
+  search_text           TEXT,              -- policy area, subjects, and summaries, for full-text search
   text_url              TEXT,              -- latest text version on govinfo.gov
   text_version          TEXT,
   congress_gov_url      TEXT NOT NULL,

@@ -9,6 +9,7 @@ import { syncFederalRegister } from "./sources/federal-register.ts";
 import { syncHouseVotes } from "./sources/house-votes.ts";
 import { syncMembers } from "./sources/members.ts";
 import { syncStats } from "./sources/stats.ts";
+import { buildSearchText, syncSummaries } from "./sources/summaries.ts";
 import { syncSenateVotes } from "./sources/voteview.ts";
 
 // Members go first: the Voteview step adds scores to existing member rows.
@@ -16,6 +17,8 @@ const STEPS: Record<string, (db: DatabaseSync) => Promise<string>> = {
   members: syncMembers,
   bills: syncBills,
   statuses: recomputeStatuses,
+  summaries: syncSummaries,
+  search: buildSearchText,
   "house-votes": syncHouseVotes,
   "senate-votes": syncSenateVotes,
   "federal-register": syncFederalRegister,

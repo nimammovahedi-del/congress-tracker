@@ -5,3 +5,4 @@ data/
 dist/
 .astro/
 web/worker-configuration.d.ts
+.panel-notes/

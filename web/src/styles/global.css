@@ -36,10 +36,13 @@
   --line: #1e1e1e;
   --line-2: #2c2c2c;
   --bracket: #4d4d4d;
+  /* Text colors, brightest first. Every one of them, --faint included, keeps at least
+     4.5:1 contrast on the panels and on hovered rows (WCAG AA for normal text). */
   --text: #e8e8e8;
   --bright: #ffffff;
-  --muted: #8c8c8c;
-  --faint: #5a5a5a;
+  --soft: #c8c8c8;
+  --muted: #9a9a9a;
+  --faint: #808080;
   --dim: #2a2a2a;
 
   --ok: #3ddc84;
@@ -48,12 +51,26 @@
   --dem: #4a6cff;
   --rep: #ff4545;
   --ind: #9468fa;
+  /* Party blue for small text: the seat-chart blue is too dark to read at label size. */
+  --dem-ink: #6d8bff;
 
   --font: "Switzer", -apple-system, system-ui, "Helvetica Neue", Helvetica, Arial, sans-serif;
   --mono: "Reddit Mono Variable", "Reddit Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* Type scale. Nothing on the site is set smaller than --fs-xs (12px). Monospace
+     uppercase is kept for short labels, codes, and numbers; anything people read as a
+     sentence, and anything they click, is set in Switzer. */
+  --fs-xs: 0.75rem;
+  --fs-sm: 0.875rem;
+  --fs-md: 1rem;
+  --fs-lg: 1.125rem;
+  --track: 0.08em;
   --bar: 46px;
-  --gap: 16px;
+  /* Spacing rhythm: --gap separates panels and grid columns (16px on phones, growing to
+     24px on wide screens); --pad is the inset inside a panel. --maxw caps the page width so
+     rows and lines stay a readable length on very wide screens. */
+  --gap: clamp(16px, 0.6rem + 1vw, 24px);
   --pad: clamp(12px, 2vw, 22px);
+  --maxw: 1560px;
   --ease: cubic-bezier(0.22, 0.8, 0.24, 1);
   color-scheme: dark;
 }
@@ -74,8 +91,9 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 400 15px/1.5 var(--font);
+  font: 400 var(--fs-md)/1.55 var(--font);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 ::selection {
   background: var(--bright);
@@ -84,6 +102,12 @@ body {
 img {
   max-width: 100%;
   display: block;
+}
+/* A portrait that failed to load (marked in Layout.astro) shows an empty frame, not a
+   broken-image icon: its picture is swapped for a blank one, keeping its size and border. */
+img.img-missing {
+  content: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E");
+  background: #0c0c0c;
 }
 a {
   color: inherit;
@@ -107,30 +131,42 @@ h2,
 h3 {
   margin: 0 0 0.4em;
   font-weight: 400;
-  letter-spacing: -0.03em;
-  line-height: 1.02;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
   color: var(--bright);
+  text-wrap: balance;
 }
 h1 {
   font-size: clamp(2.2rem, 1.4rem + 3vw, 4.4rem);
+  line-height: 1.04;
+  letter-spacing: -0.03em;
 }
 h2 {
   font-size: clamp(1.4rem, 1.1rem + 1vw, 2rem);
 }
 h3 {
-  font-size: 1.05rem;
+  font-size: var(--fs-lg);
   letter-spacing: -0.01em;
 }
 p {
   margin: 0 0 0.9em;
 }
 
-/* Monospace microcopy: LIVE_FEED_ACTIVE, FINAL TALLY, etc. */
+/* Short monospace labels: panel names, field names, table headings. Keep them to a few
+   words; a sentence belongs in .note. */
 .label,
 .eyebrow {
-  font: 400 0.68rem/1.4 var(--mono);
-  letter-spacing: 0.16em;
+  font: 400 var(--fs-xs)/1.45 var(--mono);
+  letter-spacing: var(--track);
   text-transform: uppercase;
+  color: var(--muted);
+}
+/* Secondary sentences: hints, explanations, "none listed", source lines. */
+.note {
+  margin: 0;
+  font: 400 var(--fs-sm)/1.5 var(--font);
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--muted);
 }
 .mono {
@@ -143,7 +179,14 @@ p {
   color: var(--faint);
 }
 .small {
-  font-size: 0.84rem;
+  font-size: var(--fs-sm);
+}
+/* Long titles in table cells: wrap to two lines instead of being cut to a few letters. */
+.clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .ok {
   color: var(--ok);
@@ -177,8 +220,8 @@ p {
 
 /* ---------- Layout ---------- */
 .console {
-  padding: calc(var(--bar) + var(--gap)) var(--gap) 40px;
-  max-width: 1680px;
+  padding: calc(var(--bar) + var(--gap)) var(--gap) 48px;
+  max-width: var(--maxw);
   margin: 0 auto;
 }
 .cols {
@@ -198,8 +241,15 @@ p {
 .cols-2 {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
 }
+/* Four stat boxes in a row, two by two on phones (never one tall column of four). */
 .cols-4 {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: stretch;
+}
+@media (max-width: 640px) {
+  .cols-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 .stack {
   display: grid;
@@ -299,7 +349,9 @@ p {
   color: #555;
 }
 
-/* ---------- Controls ---------- */
+/* ---------- Controls ----------
+   Everything clickable is set in Switzer, sentence case, so it reads as an action and
+   stands apart from the monospace labels around it. */
 .toggle,
 .chip {
   display: inline-flex;
@@ -308,20 +360,30 @@ p {
   padding: 6px 11px;
   border: 1px solid var(--line-2);
   background: transparent;
-  color: var(--muted);
-  font: 400 0.68rem/1.2 var(--mono);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  color: var(--soft);
+  font: 500 var(--fs-sm)/1.2 var(--font);
+  letter-spacing: 0;
+  text-transform: none;
   cursor: pointer;
   transition:
     color 120ms ease,
     border-color 120ms ease,
     background 120ms ease;
 }
-.toggle:hover,
-.chip:hover {
+/* Subject tags are not buttons: plain text in a thin box. */
+.chip {
+  font-weight: 400;
+  color: var(--text);
+  cursor: default;
+}
+.toggle:hover {
   color: var(--bright);
   border-color: var(--faint);
+}
+.toggle:disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
 }
 .toggle.active,
 .chip.active,
@@ -329,6 +391,19 @@ p {
   color: var(--bright);
   border-color: var(--muted);
   background: var(--raise);
+}
+/* Buttons and links that switch a view get a larger target than passive chips, and the
+   chosen one is inverted (white) so the current choice reads at a glance. */
+.toggle {
+  min-height: 36px;
+  padding: 8px 14px;
+}
+.toggle.active,
+.toggle[aria-current="page"],
+.toggle[aria-selected="true"] {
+  color: #050505;
+  border-color: var(--bright);
+  background: var(--bright);
 }
 .toggles {
   display: flex;
@@ -345,13 +420,14 @@ p {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  padding: 11px 16px;
+  min-height: 42px;
+  padding: 10px 16px;
   border: 1px solid var(--bright);
   background: var(--bright);
   color: #000;
-  font: 500 0.72rem/1 var(--mono);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  font: 500 0.94rem/1.2 var(--font);
+  letter-spacing: 0;
+  text-transform: none;
   cursor: pointer;
   transition:
     background 120ms ease,
@@ -371,19 +447,25 @@ p {
   color: var(--bright);
 }
 
+/* 16px at least, which also stops phones from zooming in when a field is tapped. */
 input[type="search"],
 input[type="text"],
 select {
   width: 100%;
-  font: 400 0.9rem var(--mono);
+  font: 400 var(--fs-md) var(--mono);
   color: var(--bright);
   background: var(--bg);
   border: 1px solid var(--line-2);
   border-radius: 0;
   padding: 11px 13px;
 }
+select {
+  font-family: var(--font);
+}
+/* Placeholders are hints written as sentences, so they're set in Switzer. */
 input::placeholder {
   color: var(--faint);
+  font-family: var(--font);
 }
 input:focus-visible,
 select:focus-visible,
@@ -416,6 +498,85 @@ button:focus-visible {
 .command input:focus-visible {
   outline: none;
 }
+/* A search that runs on the server gets a visible button, not only the Enter key. */
+.command .btn {
+  min-height: 0;
+  align-self: stretch;
+  border-width: 0 0 0 1px;
+  border-color: var(--line-2);
+  font-size: var(--fs-sm);
+}
+/* The big search and address fields (home, Search, Find my rep): an inset field in the dark
+   page with one bright button. The outline brightens on hover and while typing. White is
+   kept for the button, not the whole panel. */
+.cmd-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 6px 6px 18px;
+  border: 1px solid var(--faint);
+  background: #101010;
+  font: 500 1.25rem var(--mono);
+  color: var(--soft);
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+.cmd-line:hover {
+  border-color: var(--soft);
+}
+/* While typing: a white outline plus a soft ring, so the field is unmistakably active. */
+.cmd-line:focus-within {
+  border-color: var(--bright);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.16);
+}
+.cmd-line > span {
+  white-space: nowrap;
+}
+.cmd-line input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  padding: 12px 0;
+  background: transparent;
+  color: var(--text);
+  font: 500 1.06rem var(--mono);
+  caret-shape: block;
+}
+.cmd-line input::placeholder {
+  color: var(--muted);
+}
+.cmd-line input:focus-visible {
+  outline: none;
+}
+/* The search and address buttons match the site's primary button (.btn). */
+.go {
+  min-height: 48px;
+  border: 1px solid var(--bright);
+  background: var(--bright);
+  color: #050505;
+  font: 500 1rem var(--font);
+  padding: 12px 26px;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+.go:hover {
+  background: transparent;
+  color: var(--bright);
+}
+@media (max-width: 520px) {
+  .cmd-line {
+    padding-left: 12px;
+  }
+  .cmd-line > span {
+    display: none;
+  }
+  .go {
+    padding: 10px 16px;
+  }
+}
 
 /* ---------- Data elements ---------- */
 .big {
@@ -431,12 +592,16 @@ button:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 .statbox {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   border: 1px solid var(--line);
   padding: 12px 14px 14px;
   background: var(--panel);
 }
+/* Values sit on one line across a row of boxes, even when one label wraps to two lines. */
 .statbox .value {
-  margin-top: 8px;
+  margin-top: auto;
   font: 400 1.35rem/1.1 var(--mono);
   color: var(--bright);
   font-variant-numeric: tabular-nums;
@@ -453,7 +618,7 @@ button:focus-visible {
   display: inline-block;
   padding: 3px 7px;
   border: 1px solid var(--line-2);
-  font: 400 0.72rem/1.2 var(--mono);
+  font: 400 0.8rem/1.25 var(--mono);
   color: var(--text);
   white-space: nowrap;
 }
@@ -461,8 +626,8 @@ button:focus-visible {
   display: inline-block;
   padding: 4px 8px;
   border: 1px solid currentColor;
-  font: 500 0.66rem/1 var(--mono);
-  letter-spacing: 0.14em;
+  font: 500 var(--fs-xs)/1.1 var(--mono);
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   white-space: nowrap;
 }
@@ -499,12 +664,12 @@ button:focus-visible {
 
 .party {
   display: inline-block;
-  font: 500 0.7rem/1.2 var(--mono);
-  letter-spacing: 0.06em;
+  font: 500 0.8rem/1.25 var(--mono);
+  letter-spacing: 0.02em;
   white-space: nowrap;
 }
 .party.dem {
-  color: var(--dem);
+  color: var(--dem-ink);
 }
 .party.rep {
   color: var(--rep);
@@ -526,8 +691,8 @@ button:focus-visible {
   text-align: left;
   padding: 10px var(--pad);
   border-bottom: 1px solid var(--line);
-  font: 400 0.64rem/1.3 var(--mono);
-  letter-spacing: 0.16em;
+  font: 400 var(--fs-xs)/1.3 var(--mono);
+  letter-spacing: var(--track);
   text-transform: uppercase;
   color: var(--muted);
   white-space: nowrap;
@@ -536,15 +701,17 @@ button:focus-visible {
   padding: 13px var(--pad);
   border-bottom: 1px solid var(--line);
   vertical-align: middle;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
+  line-height: 1.4;
 }
 .rtable td.mono,
 .rtable td.num {
-  font: 400 0.78rem var(--mono);
+  font: 400 var(--fs-sm) var(--mono);
   color: var(--muted);
   white-space: nowrap;
 }
-.rtable td.num {
+.rtable td.num,
+.rtable th.num {
   text-align: right;
 }
 .rtable tbody tr {
@@ -558,16 +725,196 @@ button:focus-visible {
   background: var(--raise);
   box-shadow: inset 2px 0 0 var(--bright);
 }
+/* A row opens its record when clicked anywhere; its link (a name or a measure tag) lights up
+   with the row, so it's clear what the click will open. */
+.rtable tbody td > a:not(.tag) {
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+  transition: text-decoration-color 100ms ease;
+}
+.rtable tbody tr:hover td > a:not(.tag),
+.rtable tbody td > a:not(.tag):focus-visible {
+  color: var(--bright);
+  text-decoration-color: var(--faint);
+}
+a.tag {
+  transition:
+    border-color 100ms ease,
+    color 100ms ease;
+}
+a.tag:hover,
+.rtable tbody tr:hover a.tag {
+  border-color: var(--muted);
+  color: var(--bright);
+}
+/* The title column takes the width that's left; titles wrap (two lines at most, when
+   wrapped in .clamp-2) instead of being cut to a few characters. A long word may break
+   when the column is very narrow, so the table never spills out of its panel. */
 .rtable .subject {
   color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   max-width: 0;
   width: 100%;
+  overflow-wrap: anywhere;
 }
 .table-scroll {
   overflow: auto;
+}
+/* A table that scrolls with the page (not inside its own box) keeps its column headings
+   in view just under the site bar. */
+:not(.table-scroll) > .rtable th {
+  top: var(--bar);
+}
+/* Tables marked .cards turn each row into a two-line card on phones (details on the first
+   line, the full title on the second) instead of scrolling sideways. */
+@media (max-width: 640px) {
+  .rtable.cards thead {
+    display: none;
+  }
+  .rtable.cards tbody tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 12px;
+    padding: 12px var(--pad);
+    border-bottom: 1px solid var(--line);
+  }
+  .rtable.cards td {
+    padding: 0;
+    border: 0;
+  }
+  .rtable.cards td.subject {
+    order: 9;
+    flex: 1 1 100%;
+    max-width: none;
+    white-space: normal;
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+  }
+  .rtable.cards td.subject .clamp-2 {
+    -webkit-line-clamp: 3;
+  }
+  .rtable.cards td.num {
+    margin-left: auto;
+  }
+}
+
+/* Record lists: each row is one large link (measure tag, full title, then status and date),
+   easier to read and to hit than a dense table. Titles wrap instead of being cut off. */
+.reclist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.reclist > li + li {
+  border-top: 1px solid var(--line);
+}
+.reclist a {
+  display: grid;
+  grid-template-columns: minmax(96px, 128px) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 18px;
+  padding: 14px var(--pad);
+  transition: background 100ms ease;
+}
+.reclist a:hover,
+.reclist a:focus-visible {
+  background: var(--raise);
+  box-shadow: inset 2px 0 0 var(--bright);
+}
+.reclist .tag {
+  justify-self: start;
+}
+.rl-title {
+  color: var(--text);
+  line-height: 1.4;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.reclist a:hover .rl-title {
+  color: var(--bright);
+}
+/* A title with a second line under it (which vote on a bill it was, or why a search result
+   matched): only the title is clamped, so the second line always shows. */
+.rl-title.has-sub {
+  display: block;
+  overflow: visible;
+}
+.rl-sub {
+  display: block;
+  margin-top: 4px;
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  color: var(--muted);
+}
+.rl-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  font: 400 0.84rem var(--mono);
+  color: var(--muted);
+  white-space: nowrap;
+}
+/* Dates end each row; a fixed width keeps the status tags beside them lined up from row
+   to row ("Oct 9, 2026" is a character shorter than "Oct 26, 2026"). */
+@media (min-width: 641px) {
+  .reclist:not(.wide-meta) .rl-meta > span:last-child:not(.status-tag) {
+    min-width: 12ch;
+    text-align: right;
+  }
+}
+@media (min-width: 1101px) {
+  .reclist.wide-meta .rl-meta > span:last-child:not(.status-tag) {
+    min-width: 12ch;
+    text-align: right;
+  }
+}
+@media (max-width: 640px) {
+  .reclist a {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  /* A long status ("Reported by committee") and the date wrap under each other rather
+     than sliding over the measure tag. */
+  .rl-meta {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+  .reclist .tag {
+    align-self: start;
+  }
+  .rl-title,
+  .rl-title.has-sub > .clamp-2 {
+    -webkit-line-clamp: 3;
+  }
+  .rl-title {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+/* Lists with several details per row (.wide-meta) move the details under the title on
+   narrower screens, so the title keeps its width. */
+@media (max-width: 1100px) {
+  .reclist.wide-meta a {
+    grid-template-columns: minmax(96px, 128px) minmax(0, 1fr);
+  }
+  .reclist.wide-meta .rl-meta {
+    grid-column: 2;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+}
+@media (max-width: 640px) {
+  .reclist.wide-meta a {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .reclist.wide-meta .rl-meta {
+    grid-column: 1;
+  }
 }
 
 .kv {
@@ -581,19 +928,22 @@ button:focus-visible {
 }
 .kv .v {
   margin-top: 4px;
-  font: 400 0.84rem var(--mono);
+  font: 400 0.92rem var(--mono);
   color: var(--bright);
 }
+/* Key/value rows: a short label on the left, the value on the right. */
 .rows-list > div {
   display: flex;
   justify-content: space-between;
+  align-items: baseline;
   gap: 12px;
-  padding: 9px 0;
+  padding: 10px 0;
   border-bottom: 1px solid var(--line);
-  font: 400 0.76rem var(--mono);
-  letter-spacing: 0.06em;
+  font: 400 0.9rem/1.4 var(--mono);
 }
 .rows-list > div > :first-child {
+  font-size: var(--fs-xs);
+  letter-spacing: var(--track);
   color: var(--muted);
   text-transform: uppercase;
 }
@@ -604,24 +954,43 @@ button:focus-visible {
 
 .pager {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding: 12px var(--pad);
   border-top: 1px solid var(--line);
-  font: 400 0.68rem var(--mono);
-  letter-spacing: 0.14em;
+  font: 400 var(--fs-xs) var(--mono);
+  letter-spacing: var(--track);
   text-transform: uppercase;
   color: var(--muted);
 }
+.pager a:not(.toggle) {
+  color: var(--bright);
+  text-transform: none;
+  letter-spacing: 0;
+  font: 500 var(--fs-sm) var(--font);
+}
+.pager a:not(.toggle):hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 
+/* Reading text: a comfortable line length and spacing. */
 .prose {
-  max-width: 74ch;
-  color: #cfcfcf;
-  line-height: 1.6;
+  max-width: 70ch;
+  color: #d4d4d4;
+  line-height: 1.65;
 }
 .prose ul {
   padding-left: 1.2em;
+}
+/* The panel's own padding is the space above and below; text adds none of its own. */
+.prose > :first-child {
+  margin-top: 0;
+}
+.prose > :last-child {
+  margin-bottom: 0;
 }
 .prose li {
   margin: 0.35em 0;
@@ -634,14 +1003,16 @@ button:focus-visible {
 details > summary {
   cursor: pointer;
   list-style: none;
-  font: 400 0.68rem/1.4 var(--mono);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--muted);
+  font: 500 var(--fs-sm)/1.4 var(--font);
+  color: var(--soft);
   padding-top: 12px;
+}
+details > summary::-webkit-details-marker {
+  display: none;
 }
 details > summary::before {
   content: "+ ";
+  font-family: var(--mono);
 }
 details[open] > summary::before {
   content: "− ";
@@ -650,13 +1021,173 @@ details > summary:hover {
   color: var(--bright);
 }
 
+/* ---------- Breadcrumb trail (rendered by the layout above a page's panels) ---------- */
+.trail {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: calc(var(--bar) + 12px) var(--gap) 0;
+}
+.trail ol {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font: 400 var(--fs-sm)/1.4 var(--font);
+  color: var(--muted);
+}
+.trail li {
+  min-width: 0;
+}
+.trail li + li::before {
+  content: "/";
+  margin: 0 10px;
+  color: var(--faint);
+}
+.trail a {
+  display: inline-block;
+  padding: 6px 0;
+}
+.trail a:hover {
+  color: var(--bright);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.trail [aria-current] {
+  color: var(--bright);
+}
+.trail + .console {
+  padding-top: 10px;
+}
+
+/* ---------- Tabs ----------
+   Large tabs over a set of panes, so a page shows one kind of record at a time. Without
+   JavaScript every pane shows, one after another, and each tab jumps to its pane; the
+   page script (initTabs in fx.ts) adds .tabs-on and shows one pane at a time. */
+.tabbar {
+  display: flex;
+  overflow-x: auto;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line-2);
+  scrollbar-width: none;
+}
+.tabbar::-webkit-scrollbar {
+  display: none;
+}
+.tab-link {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 54px;
+  padding: 0 22px;
+  border-right: 1px solid var(--line);
+  font: 500 var(--fs-md)/1.2 var(--font);
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  color: var(--soft);
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    background 120ms ease;
+}
+.tab-link:hover {
+  color: var(--bright);
+  background: var(--raise);
+}
+.tab-link[aria-selected="true"] {
+  color: #050505;
+  background: var(--bright);
+}
+/* Keyboard focus draws inside the tab (the tab bar clips anything outside it), dark on the
+   white selected tab so it still shows. */
+.tab-link:focus-visible {
+  outline: 2px solid var(--bright);
+  outline-offset: -5px;
+}
+.tab-link[aria-selected="true"]:focus-visible {
+  outline-color: #050505;
+}
+.tab-link .n {
+  padding: 2px 6px;
+  border: 1px solid currentColor;
+  font: 400 var(--fs-xs)/1.2 var(--mono);
+  opacity: 0.8;
+}
+/* Small tablets: tighter tabs, so five of them (the bill page) still fit in one row. */
+@media (max-width: 760px) {
+  .tab-link {
+    padding: 0 14px;
+  }
+}
+/* On phones every tab stays in view: they wrap into a grid instead of scrolling sideways. */
+@media (max-width: 640px) {
+  .tabbar {
+    flex-wrap: wrap;
+  }
+  .tab-link {
+    flex: 1 1 50%;
+    justify-content: center;
+    min-height: 50px;
+    padding: 0 12px;
+    border-bottom: 1px solid var(--line);
+  }
+}
+.tab-pane + .tab-pane {
+  border-top: 1px solid var(--line-2);
+}
+.tabs-on .tab-pane + .tab-pane {
+  border-top: 0;
+}
+.pane-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 18px;
+  padding: 20px var(--pad) 16px;
+  border-bottom: 1px solid var(--line);
+}
+.pane-head h2 {
+  margin: 0;
+  font-size: clamp(1.2rem, 1.05rem + 0.5vw, 1.5rem);
+  letter-spacing: -0.02em;
+}
+.pane-head p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.94rem;
+}
+/* A tab's view slides in from the side of the tab that was picked (--dir is 1 or -1, set in
+   fx.ts). Only "backwards" fill, so no transform is left on the pane afterwards. */
+.fx .tab-pane.pane-in {
+  animation: pane-in 240ms var(--ease) backwards;
+}
+@keyframes pane-in {
+  from {
+    opacity: 0;
+    transform: translateX(calc(var(--dir, 1) * 18px));
+  }
+}
+
+/* Long text (e.g. a bill summary) shows its first part until "Show more" is pressed. The
+   script in fx.ts adds .clamped only when the text is long, so without it all text shows. */
+.clamped {
+  max-height: var(--clamp, 480px);
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(#000 72%, transparent);
+  mask-image: linear-gradient(#000 72%, transparent);
+}
+.clamp-toggle {
+  margin-top: 14px;
+}
+
 .empty {
   padding: 28px;
   text-align: center;
-  font: 400 0.74rem var(--mono);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--faint);
+  font: 400 0.94rem/1.5 var(--font);
+  color: var(--muted);
 }
 
 .visually-hidden {
@@ -669,23 +1200,36 @@ details > summary:hover {
 }
 
 /* ---------- Motion ----------
-   Panels unfold from their corner square on arrival and fold back into it when leaving.
-   Everything is visible without JavaScript; the .fx class (set by the page script)
-   switches the effects on. */
+   On the first page of a visit, panels unfold (a line draws across, then the panel drops
+   open), the heading decodes, and bars, meters and seats fill in. Later pages in the same
+   visit (.calm, set in Layout.astro before the first paint) fade in quickly and fill their
+   bars faster. Leaving a page dims it while the next one loads. Everything is visible without
+   JavaScript; the .fx class (set by the <head> script) switches the effects on.
+   Components time their data motion from two tokens: --fx-start (when bars and seats begin)
+   and --fx-pace (a multiplier on their durations and staggers). */
+:root {
+  --fx-start: 240ms;
+  --fx-pace: 1;
+}
+.calm {
+  --fx-start: 40ms;
+  --fx-pace: 0.55;
+}
 .fx .panel-frame {
-  animation: unfold 560ms var(--ease) both;
-  animation-delay: calc(var(--i, 0) * 70ms);
+  animation: unfold 440ms var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 45ms);
 }
 .fx .panel::after {
-  animation: marker 620ms ease both;
-  animation-delay: calc(var(--i, 0) * 70ms);
+  animation: marker 480ms ease both;
+  animation-delay: calc(var(--i, 0) * 45ms);
 }
 @keyframes unfold {
   0% {
-    clip-path: inset(0 100% 100% 0);
-    opacity: 0.2;
+    clip-path: inset(0 100% calc(100% - 2px) 0);
+    opacity: 0.4;
   }
-  55% {
+  32% {
+    clip-path: inset(0 0 calc(100% - 2px) 0);
     opacity: 1;
   }
   100% {
@@ -701,30 +1245,84 @@ details > summary:hover {
     opacity: 0;
   }
 }
-.leaving .panel-frame {
-  animation: fold 240ms ease-in forwards !important;
+.fx.calm .panel-frame {
+  animation: calm-in 200ms ease-out both;
+  animation-delay: calc(var(--i, 0) * 20ms);
 }
-.leaving .panel::after {
-  animation: none !important;
-  opacity: 1;
+.fx.calm .panel::after {
+  animation: none;
 }
-@keyframes fold {
-  to {
-    clip-path: inset(0 100% 100% 0);
-    opacity: 0.15;
+@keyframes calm-in {
+  from {
+    opacity: 0;
   }
 }
-.leaving .site-bar .nav,
-.leaving .site-foot {
+
+/* The decoding heading (scramble in fx.ts): each letter keeps its place, drawn invisibly, with
+   a random glyph painted over it, so the line never reflows while it decodes. */
+.sc {
+  position: relative;
+  -webkit-text-fill-color: transparent;
+}
+.sc::after {
+  content: attr(data-g);
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translateX(-50%);
+  color: var(--muted);
+  -webkit-text-fill-color: currentColor;
+}
+/* On the first page of a visit the heading waits, hidden, for its decode instead of showing
+   its final text first; if the script never runs, the text appears after a moment anyway. */
+.fx:not(.calm) h1 [data-scramble]:not(.decode),
+.fx:not(.calm) h1[data-scramble]:not(.decode) {
+  animation: hold 0s 1s backwards;
+}
+@keyframes hold {
+  from {
+    color: transparent;
+  }
+}
+
+/* Leaving: the page dims and a loading line runs under the site bar until the next page
+   paints (the browser keeps showing this one until then). */
+.leaving main {
   opacity: 0.4;
-  transition: opacity 200ms ease;
+  transition: opacity 120ms ease-out;
+}
+.leaving .site-bar::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--bright);
+  transform-origin: left;
+  animation: loading 3s cubic-bezier(0.1, 0.75, 0.2, 1) both;
+}
+@keyframes loading {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(0.9);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .fx .panel-frame,
   .fx .panel::after,
-  .leaving .panel-frame {
+  .fx .tab-pane.pane-in {
     animation: none !important;
+  }
+  .leaving main {
+    transition: none;
+  }
+  .leaving .site-bar::after {
+    animation: none;
+    transform: scaleX(0.5);
   }
   .cursor::after,
   .block-cursor::after {
