@@ -27,10 +27,11 @@ let state = (Astro.url.searchParams.get("state") ?? "").toUpperCase();
 let district: number | null = null;
 let matched: string | null = null;
 let error: string | null = null;
+let address = "";
 const lines: Line[] = [];
 
 if (Astro.request.method === "POST") {
-  const address = String((await Astro.request.formData()).get("address") ?? "").trim().slice(0, 200);
+  address = String((await Astro.request.formData()).get("address") ?? "").trim().slice(0, 200);
   if (address) {
     lines.push({ text: "Looking up the address with the U.S. Census Bureau…" });
     try {
@@ -40,7 +41,10 @@ if (Astro.request.method === "POST") {
       const data = (await res.json()) as { result?: { addressMatches?: { matchedAddress: string; geographies: Record<string, Record<string, string>[]> }[] } };
       const hit = data.result?.addressMatches?.[0];
       if (!hit) {
-        error = "No match for that address. Check the street and city, or pick your state below.";
+        // A name instead of an address (no house number) belongs in Search.
+        error = /\d/.test(address)
+          ? "No match for that address. Check the street and city, or pick your state below."
+          : "That doesn't look like a street address. Enter a home address with a house number, or search for a member by name.";
         lines.push({ text: "No match found", tone: "alert" });
       } else {
         matched = hit.matchedAddress;
@@ -80,19 +84,19 @@ const seatLabel = (r: Rep) => (r.chamber === "senate" ? "Senator" : `Representat
   <div class="console">
     <div class="cols cols-main-side">
       <Panel>
-        <form class="panel-body cmd" method="post" action="/find">
+        <form class="panel-body cmd" method="post" action="/find#results">
           <h1 class="cmd-title">Find your representatives</h1>
           <label class="cmd-label" for="addr">Enter your home address to see your two senators and your member of the House.</label>
           <div class="cmd-line">
             <span aria-hidden="true">&gt;</span>
-            <input id="addr" name="address" type="text" placeholder="Street address, city, state" autocomplete="street-address" required />
+            <input id="addr" name="address" type="text" placeholder="Street address, city, state" autocomplete="street-address" value={address} required />
             <button class="go" type="submit">Find</button>
           </div>
           <p class="hint">Your address goes only to the U.S. Census Bureau's address lookup to find your district. It isn't stored.</p>
         </form>
       </Panel>
       <Panel label="Or pick a state">
-        <form class="panel-body state-form" action="/find">
+        <form class="panel-body state-form" action="/find#results">
           <select name="state" aria-label="State" onchange="this.form.submit()">
             <option value="">Choose a state…</option>
             {Object.entries(STATES).map(([code, name]) => <option value={code} selected={code === validState}>{name}</option>)}
@@ -107,7 +111,9 @@ const seatLabel = (r: Rep) => (r.chamber === "senate" ? "Senator" : `Representat
       </Panel>
     </div>
 
-    {error && <p class="error">{error}</p>}
+    {/* Results land here; the forms jump to #results so they show without scrolling. */}
+    <div id="results" class="results">
+    {error && <p class="error">{error}{!/\d/.test(address) && address && <> <a class="link" href={`/search?q=${encodeURIComponent(address)}`}>Search for “{address}”</a></>}</p>}
 
     {
       [
@@ -155,6 +161,7 @@ const seatLabel = (r: Rep) => (r.chamber === "senate" ? "Senator" : `Representat
           </section>
         ))
     }
+    </div>
   </div>
 </Layout>
 
@@ -206,6 +213,10 @@ const seatLabel = (r: Rep) => (r.chamber === "senate" ? "Senator" : `Representat
   .state-form {
     display: flex;
     gap: 8px;
+  }
+  /* Clears the sticky site bar when the page jumps to the results. */
+  .results {
+    scroll-margin-top: 72px;
   }
   .error {
     margin: var(--gap) 0 0;
