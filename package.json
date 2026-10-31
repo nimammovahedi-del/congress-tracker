@@ -9,6 +9,7 @@
   },
   "scripts": {
     "sync": "node src/sync.ts",
+    "upload": "node src/upload.ts",
     "report": "node src/report.ts",
     "test": "node --test \"test/**/*.test.ts\"",
     "check": "tsc --noEmit"
@@ -20,6 +21,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "wrangler": "^4.156.0"
   }
 }

@@ -1,0 +1,14 @@
+// Cloudflare settings. The account is CongressZ; IDs here are identifiers, not secrets.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "congress-tracker",
+  "account_id": "7a02b1498e81a67465d9f408c1eda468",
+  "compatibility_date": "2026-10-01",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "congress-tracker",
+      "database_id": "cc4ee772-0ebd-4a46-b7bb-0098070dedc0"
+    }
+  ]
+}

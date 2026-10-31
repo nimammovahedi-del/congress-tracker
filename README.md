@@ -28,10 +28,28 @@ can't be embedded in another site, so the website will link out to them.
 npm install          # once
 npm run sync         # pull the latest data (all steps)
 npm run sync -- bills house-votes   # only some steps
+npm run upload       # copy what changed to the hosted database on Cloudflare
 npm run report       # row counts, freshness, and data-quality checks
 npm test             # unit tests
 npm run check        # type check
 ```
+
+## Hosting and the hourly job
+
+The website will read from a Cloudflare D1 database named `congress-tracker` in the
+**CongressZ** Cloudflare account (see `wrangler.jsonc`).
+
+A GitHub Actions job (`.github/workflows/sync.yml`) runs every hour at :17. It runs
+`npm run sync`, then `npm run upload`. It also runs when code changes are pushed, and can
+be started by hand from the repo's **Actions** tab. It needs two repository secrets:
+`CLOUDFLARE_API_TOKEN` (a token with D1 Edit permission on the CongressZ account) and
+`CLOUDFLARE_ACCOUNT_ID`.
+
+Cloudflare's free plan allows 100,000 database row writes per day per account. The upload
+spends at most `D1_DAILY_WRITE_BUDGET` (default 45,000), spread evenly over the day, and
+resends only the parts of a bill, vote, or member that changed. The first full upload
+(about 1.5–1.7 million writes) therefore trickles in over roughly five weeks, newest data
+first. Each run's log ends with how much is left and how many days that will take.
 
 Requires Node.js 24 or newer (it runs TypeScript directly and has SQLite built in).
 

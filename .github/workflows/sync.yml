@@ -1,0 +1,67 @@
+# Every hour: pull the latest congressional data, then upload what changed to the
+# hosted database on Cloudflare, within the daily write budget (see src/upload.ts).
+name: Sync data
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "db/**"
+      - "package.json"
+      - "package-lock.json"
+      - "wrangler.jsonc"
+      - ".github/workflows/sync.yml"
+
+# One run at a time, so two runs never upload the same changes or overspend the budget.
+concurrency:
+  group: sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # The working database carries over between runs, so each run only fetches changes.
+      # If it's ever lost, the next run rebuilds it (about 2 minutes) and asks Cloudflare
+      # what it already has.
+      - name: Restore the working database
+        uses: actions/cache/restore@v6
+        with:
+          path: data
+          key: congress-db-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: congress-db-
+
+      - name: Pull the latest data
+        run: npm run sync
+
+      # Runs even if one source failed, so the others' updates still go out.
+      - name: Upload changes to Cloudflare
+        if: success() || failure()
+        run: npm run upload
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Save the working database
+        if: success() || failure()
+        uses: actions/cache/save@v6
+        with:
+          path: data
+          key: congress-db-${{ github.run_id }}-${{ github.run_attempt }}

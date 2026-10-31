@@ -213,7 +213,17 @@ CREATE TABLE IF NOT EXISTS fr_documents (
 CREATE INDEX IF NOT EXISTS fr_documents_date ON fr_documents (publication_date);
 CREATE INDEX IF NOT EXISTS fr_documents_type ON fr_documents (doc_type, publication_date);
 
--- Bookkeeping for incremental syncs.
+-- What has been copied to the hosted database (Cloudflare D1), one row per unit:
+-- a bill with its actions, cosponsors, and so on; a roll call with its member votes;
+-- a member with their terms; or a Federal Register document. Both databases keep this
+-- table, so a fresh local copy can learn what the hosted one already has.
+CREATE TABLE IF NOT EXISTS published_units (
+  unit         TEXT PRIMARY KEY,           -- e.g. 'bill:119-hr-1', 'vote:h-119-1-190'
+  hash         TEXT NOT NULL,              -- fingerprint of the unit's content when published
+  published_at TEXT NOT NULL
+);
+
+-- Bookkeeping for incremental syncs (local only).
 CREATE TABLE IF NOT EXISTS sync_state (
   key        TEXT PRIMARY KEY,
   value      TEXT,
