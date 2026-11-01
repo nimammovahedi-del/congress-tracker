@@ -176,3 +176,28 @@ export function sanitizeHtml(html: string): string {
       return tag.startsWith("</") ? `</${lower}>` : `<${lower}>`;
     });
 }
+
+// Official pages for a bill or vote this site doesn't have (yet): bills on Congress.gov,
+// House votes at the Clerk's office, Senate votes on senate.gov. Ids look like
+// "119-hr-443" and "h-119-1-123" / "s-119-2-256"; anything else gives null.
+const BILL_PATHS: Record<string, string> = {
+  hr: "house-bill",
+  s: "senate-bill",
+  hres: "house-resolution",
+  sres: "senate-resolution",
+  hjres: "house-joint-resolution",
+  sjres: "senate-joint-resolution",
+  hconres: "house-concurrent-resolution",
+  sconres: "senate-concurrent-resolution",
+};
+export function congressGovBillUrl(id: string): string | null {
+  const m = id.match(/^(\d{2,3})-([a-z]+)-(\d+)$/);
+  return m && BILL_PATHS[m[2]] ? `https://www.congress.gov/bill/${ordinal(Number(m[1]))}-congress/${BILL_PATHS[m[2]]}/${m[3]}` : null;
+}
+export function officialVoteUrl(id: string): string | null {
+  const m = id.match(/^([hs])-(\d{2,3})-([12])-(\d+)$/);
+  if (!m) return null;
+  const [, chamber, congress, session, roll] = m;
+  if (chamber === "h") return `https://clerk.house.gov/Votes/${1789 + 2 * (Number(congress) - 1) + (Number(session) - 1)}${Number(roll)}`;
+  return `https://www.senate.gov/legislative/LIS/roll_call_votes/vote${congress}${session}/vote_${congress}_${session}_${roll.padStart(5, "0")}.htm`;
+}

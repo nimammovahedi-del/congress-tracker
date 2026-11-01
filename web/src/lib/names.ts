@@ -12,7 +12,7 @@ export interface Named {
 export function normalizeName(s: string): string {
   return s
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
@@ -20,12 +20,12 @@ export function normalizeName(s: string): string {
 
 // Members whose names hold every typed word (as the start of a word); failing that, members
 // whose last name is one of the typed words. Single letters ("a" in "Dave A. Min") are skipped.
-export function matchMembers<T extends Named>(query: string, members: T[]): T[] {
+export function matchMembers<T extends Named>(query: string, members: T[], lastNameFallback = true): T[] {
   const words = normalizeName(query).split(" ").filter((w) => w.length > 1);
   if (!words.length) return [];
   const names = members.map((m) => normalizeName(`${m.full_name} ${m.first_name ?? ""} ${m.last_name ?? ""}`).split(" "));
   const all = members.filter((_, i) => words.every((w) => names[i].some((n) => n.startsWith(w))));
-  if (all.length) return all;
+  if (all.length || !lastNameFallback) return all;
   const lastNames = members.map((m) => normalizeName(m.last_name ?? m.full_name.split(" ").pop() ?? ""));
   return members.filter((_, i) => words.some((w) => lastNames[i] === w || lastNames[i].split(" ").includes(w)));
 }

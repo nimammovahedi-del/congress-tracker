@@ -4,8 +4,12 @@ import StatusTag from "../components/StatusTag.astro";
 import Layout from "../layouts/Layout.astro";
 import { BILL_LIST_COLUMNS, BILL_LIST_JOIN, row, rows, stat, type BillListItem, type Topic } from "../lib/db";
 import { billNumber, consoleDate, CONGRESS, memberTag, partyClass, STATES } from "../lib/format";
+import { stateFromText } from "../lib/locate";
 
 const q = (Astro.url.searchParams.get("q") ?? "").trim().slice(0, 120);
+
+// A state's name or a place: offer its members of Congress up top.
+const qState = q ? stateFromText(q) : null;
 
 // A bill number ("hr 1", "H.R.1", "s. 5", "hjres 12") goes straight to that bill.
 const ref = q.toUpperCase().replace(/[\s.]/g, "").match(/^(HR|S|HJRES|SJRES|HCONRES|SCONRES|HRES|SRES)(\d+)$/);
@@ -121,6 +125,26 @@ const EXAMPLES = ["H.R. 1", "border security", "veterans", "Medicare", "farm"];
           <a class="start" href="/votes"><span class="label">How Congress voted</span><span class="start-t">See every vote →</span></a>
           <a class="start" href="/members"><span class="label">Senators and representatives</span><span class="start-t">All members of Congress →</span></a>
         </div>
+      )
+    }
+
+    {
+      /* A state, city or ZIP code: one step to the people who represent it. A place goes to
+         Find my rep, which works out the district. */
+      q && qState && (
+        <a class="shortcut" href={`/find?state=${qState}#results`}>
+          <span class="label">Who represents {STATES[qState]}</span>
+          <span class="shortcut-t">See {STATES[qState]}'s members of Congress →</span>
+        </a>
+      )
+    }
+    {
+      q && !qState && members.length === 0 && (bills.length < 5 || /^\d{5}$/.test(q)) && (
+        <form class="shortcut" method="post" action="/find#results">
+          <input type="hidden" name="address" value={q} />
+          <span class="label">Looking for a place?</span>
+          <button class="shortcut-t" type="submit" data-busy="Looking up…">Find who represents “{q}” →</button>
+        </form>
       )
     }
 
@@ -247,6 +271,28 @@ const EXAMPLES = ["H.R. 1", "border security", "veterans", "Medicare", "farm"];
   .starts {
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
     margin-top: var(--gap);
+  }
+  .shortcut {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: var(--gap) 0 0;
+    padding: 16px 20px;
+    border: 1px solid var(--bright);
+    background: var(--panel);
+    transition: background 120ms ease;
+  }
+  .shortcut:hover {
+    background: var(--raise);
+  }
+  .shortcut-t {
+    padding: 0;
+    border: 0;
+    background: none;
+    text-align: left;
+    cursor: pointer;
+    font: 500 var(--fs-lg) var(--font);
+    color: var(--bright);
   }
   .start {
     display: grid;

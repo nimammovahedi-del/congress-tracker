@@ -95,10 +95,10 @@ const slugOf = new Map((topics ?? []).map((t) => [t.area, t.slug]));
             <label class="act-label" for="home-addr">Find your representatives</label>
             <div class="cmd-line">
               <span aria-hidden="true">&gt;</span>
-              <input id="home-addr" name="address" type="text" placeholder="Your home address" autocomplete="street-address" enterkeyhint="go" required />
+              <input id="home-addr" name="address" type="text" placeholder="Address, city, or ZIP" autocomplete="street-address" enterkeyhint="go" required />
               <button class="go" type="submit" data-busy="Looking up…">Find</button>
             </div>
-            <p class="act-note"><a href="/find">Or pick your state</a></p>
+            <p class="act-note"><a href="/states">Or pick your state</a></p>
           </form>
         </div>
       </div>

@@ -6,12 +6,16 @@ import StatusTracker from "../../components/StatusTracker.astro";
 import VoteVisualizer from "../../components/VoteVisualizer.astro";
 import Layout from "../../layouts/Layout.astro";
 import { memberStats, memberVotes, row, rows, type Bill, type Member, type RollCall } from "../../lib/db";
-import { billNumber, billNumberFromId, consoleDate, memberTag, memberTitle, ordinal, partyClass, sanitizeHtml, slugify, textLinks } from "../../lib/format";
+import { billNumber, billNumberFromId, congressGovBillUrl, consoleDate, memberTag, memberTitle, ordinal, partyClass, sanitizeHtml, slugify, textLinks } from "../../lib/format";
 import { passed, seatInfo } from "../../lib/votes";
 
 const id = Astro.params.id ?? "";
 const bill = await row<Bill>("SELECT * FROM bills WHERE id = ?", id);
-if (!bill) return Astro.rewrite("/404");
+// A bill that isn't loaded here (an older Congress, or not uploaded yet) opens on Congress.gov.
+if (!bill) {
+  const official = congressGovBillUrl(id);
+  return official ? Astro.redirect(official, 302) : Astro.rewrite("/404");
+}
 
 const [sponsor, actions, cosponsors, subjects, related, cbo, rollCalls, pendingVotes] = await Promise.all([
   bill.sponsor_id ? row<Member>("SELECT * FROM members WHERE bioguide_id = ?", bill.sponsor_id) : null,
@@ -27,8 +31,8 @@ const [sponsor, actions, cosponsors, subjects, related, cbo, rollCalls, pendingV
     id,
   ),
   rows<{ subject: string }>("SELECT subject FROM bill_subjects WHERE bill_id = ? ORDER BY subject", id),
-  rows<{ related_bill_id: string; relationship: string; title: string | null }>(
-    `SELECT r.related_bill_id, MIN(r.relationship) AS relationship, b.title
+  rows<{ related_bill_id: string; relationship: string; title: string | null; here: number }>(
+    `SELECT r.related_bill_id, MIN(r.relationship) AS relationship, b.title, b.id IS NOT NULL AS here
        FROM related_bills r LEFT JOIN bills b ON b.id = r.related_bill_id
       WHERE r.bill_id = ? GROUP BY r.related_bill_id ORDER BY r.related_bill_id LIMIT 20`,
     id,
@@ -179,8 +183,10 @@ const PARTY_PLURAL: Record<string, string> = { D: "Democrats", R: "Republicans",
           {
             ai && (
               <div class="panel-body ai-summary">
-                <p class="label ai-tag">{ai.kind === "clarification" ? "Quick overview" : "Overview"} · AI-written</p>
-                <p class="overview">{ai.overview}</p>
+                <div class="lead">
+                  <p class="label ai-tag">Overview</p>
+                  <p class="overview">{ai.overview}</p>
+                </div>
                 <div class="debate">
                   <div class="side">
                     <p class="label">Supporters say</p>
@@ -191,10 +197,6 @@ const PARTY_PLURAL: Record<string, string> = { D: "Democrats", R: "Republicans",
                     <p>{sideText(ai.against, "Critics")}</p>
                   </div>
                 </div>
-                <p class="note source">
-                  Written by AI from {ai.text_version ? `the “${ai.text_version}” text` : "the bill text"}{ai.written && <> · {consoleDate(ai.written)}</>} · it may contain mistakes;{" "}
-                  <a class="link" href={ai.text_url ?? links?.html ?? bill.congress_gov_url} target="_blank" rel="noopener">check the official text</a>
-                </p>
               </div>
             )
           }
@@ -334,9 +336,9 @@ const PARTY_PLURAL: Record<string, string> = { D: "Democrats", R: "Republicans",
                 related.length ? (
                   <div class="related">
                     {related.map((r) => (
-                      <a href={`/bills/${r.related_bill_id}`}>
+                      <a href={r.here ? `/bills/${r.related_bill_id}` : (congressGovBillUrl(r.related_bill_id) ?? `/bills/${r.related_bill_id}`)} target={r.here ? undefined : "_blank"} rel={r.here ? undefined : "noopener"}>
                         <span class="tag">{billNumberFromId(r.related_bill_id)}</span>
-                        <span class="rel-title clamp-2">{r.title ?? ""}</span>
+                        <span class="rel-title clamp-2">{r.title ?? (r.here ? "" : `On Congress.gov${r.related_bill_id.startsWith(`${bill.congress}-`) ? "" : ` · ${ordinal(Number(r.related_bill_id.split("-")[0]))} Congress`} ↗`)}</span>
                         <span class="label">{relationship(r.relationship)}</span>
                       </a>
                     ))}
@@ -517,8 +519,21 @@ const PARTY_PLURAL: Record<string, string> = { D: "Democrats", R: "Republicans",
   .source {
     margin: 16px 0 0;
   }
+  /* The overview reads on the left; on wide screens the case for and against sits in a
+     column to its right instead of below it. */
   .ai-summary {
-    max-width: 82ch;
+    display: grid;
+    gap: 18px 32px;
+  }
+  @media (min-width: 1100px) {
+    .ai-summary {
+      grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+      align-items: start;
+    }
+    .ai-summary .debate {
+      grid-template-columns: minmax(0, 1fr);
+      margin-top: 0;
+    }
   }
   .ai-tag {
     margin-bottom: 10px;

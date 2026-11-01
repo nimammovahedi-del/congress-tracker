@@ -1,0 +1,199 @@
+---
+// Pick a state from a map of the U.S. (or the list under it) to see its members of Congress.
+import Panel from "../components/Panel.astro";
+import Layout from "../layouts/Layout.astro";
+import { rows } from "../lib/db";
+import { STATES } from "../lib/format";
+import { MAP_VIEWBOX, STATE_SHAPES } from "../lib/us-map";
+
+const counts = await rows<{ state: string; chamber: string; n: number }>(
+  "SELECT state, chamber, COUNT(*) AS n FROM members WHERE in_office = 1 GROUP BY 1, 2",
+);
+const seats = new Map<string, { senate: number; house: number }>();
+for (const c of counts) {
+  const s = seats.get(c.state) ?? { senate: 0, house: 0 };
+  s[c.chamber === "senate" ? "senate" : "house"] = c.n;
+  seats.set(c.state, s);
+}
+const summary = (code: string) => {
+  const s = seats.get(code) ?? { senate: 0, house: 0 };
+  const parts = [];
+  if (s.senate) parts.push(`${s.senate} ${s.senate === 1 ? "senator" : "senators"}`);
+  parts.push(`${s.house} ${s.house === 1 ? "representative" : "representatives"}`);
+  return parts.join(" · ");
+};
+const href = (code: string) => `/find?state=${code}#results`;
+// Too small on the map for a label; they're in the list below.
+const UNLABELLED = new Set(["RI", "DE", "CT", "NJ", "MA", "NH", "VT", "MD", "DC"]);
+const shapes = Object.entries(STATE_SHAPES).sort(([a], [b]) => a.localeCompare(b));
+const list = Object.entries(STATES).sort(([, a], [, b]) => a.localeCompare(b));
+---
+
+<Layout title="Pick your state" crumbs={[{ label: "Find my rep", href: "/find" }, { label: "Pick your state" }]}>
+  <div class="console">
+    <Panel>
+      <div class="panel-body head">
+        <h1 class="cursor"><span data-scramble>Pick your state</span></h1>
+      </div>
+      <div class="panel-body map-wrap">
+        <svg class="us-map" viewBox={MAP_VIEWBOX} role="group" aria-label="Map of the United States. Choose a state to see its members of Congress.">
+          {
+            shapes.map(([code, s]) => (
+              <a href={href(code)} aria-label={`${STATES[code]}: ${summary(code)}`} data-name={STATES[code]} data-sum={summary(code)}>
+                <path d={s.d} />
+              </a>
+            ))
+          }
+          <g class="codes" aria-hidden="true">
+            {shapes.filter(([code]) => !UNLABELLED.has(code)).map(([code, s]) => <text x={s.c[0]} y={s.c[1]}>{code}</text>)}
+          </g>
+        </svg>
+        <div class="tip" hidden aria-hidden="true"><strong></strong><span></span></div>
+      </div>
+    </Panel>
+
+    <Panel label="All states and territories">
+      <ul class="panel-body state-list">
+        {
+          list.map(([code, name]) => (
+            <li>
+              <a href={href(code)} data-code={code}>
+                <span class="code">{code}</span>
+                <span class="name">{name}</span>
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+    </Panel>
+  </div>
+</Layout>
+
+<script>
+  // A label that follows the pointer over the map with the state's name and seat count, and
+  // the matching state in the list lights up too.
+  const wrap = document.querySelector<HTMLElement>(".map-wrap")!;
+  const tip = wrap.querySelector<HTMLElement>(".tip")!;
+  const states = wrap.querySelectorAll<SVGAElement>("svg a");
+  const listLink = (code: string | null) => (code ? document.querySelector<HTMLElement>(`.state-list a[data-code="${code}"]`) : null);
+  const codeOf = (a: SVGAElement) => new URL(a.getAttribute("href")!, location.href).searchParams.get("state");
+  const show = (a: SVGAElement, x: number, y: number) => {
+    tip.querySelector("strong")!.textContent = a.dataset.name ?? "";
+    tip.querySelector("span")!.textContent = a.dataset.sum ?? "";
+    tip.hidden = false;
+    const box = wrap.getBoundingClientRect();
+    const left = Math.min(Math.max(x - box.left + 14, 0), box.width - tip.offsetWidth);
+    tip.style.transform = `translate(${left}px, ${y - box.top + 18}px)`;
+  };
+  states.forEach((a) => {
+    a.addEventListener("pointermove", (e) => show(a, e.clientX, e.clientY));
+    a.addEventListener("pointerenter", () => listLink(codeOf(a))?.classList.add("lit"));
+    a.addEventListener("pointerleave", () => {
+      tip.hidden = true;
+      listLink(codeOf(a))?.classList.remove("lit");
+    });
+    a.addEventListener("focus", () => {
+      const r = a.getBoundingClientRect();
+      show(a, r.left + r.width / 2, r.top + r.height / 2);
+    });
+    a.addEventListener("blur", () => (tip.hidden = true));
+  });
+  // Pointing at a state in the list lights it on the map.
+  document.querySelectorAll<HTMLAnchorElement>(".state-list a").forEach((link) => {
+    const shape = [...states].find((a) => codeOf(a) === link.dataset.code);
+    if (!shape) return;
+    link.addEventListener("pointerenter", () => shape.classList.add("lit"));
+    link.addEventListener("pointerleave", () => shape.classList.remove("lit"));
+  });
+</script>
+
+<style>
+  .head h1 {
+    margin: 0;
+  }
+  .map-wrap {
+    position: relative;
+  }
+  .us-map {
+    display: block;
+    width: 100%;
+    /* Wide enough to tap with ease, short enough to fit the window (the map is 1.6:1). */
+    max-width: min(1040px, calc((100vh - 270px) * 1.6));
+    height: auto;
+    margin: 0 auto;
+  }
+  .us-map path {
+    fill: var(--g1);
+    stroke: var(--bg);
+    stroke-width: 1;
+    stroke-linejoin: round;
+    transition: fill 120ms ease;
+  }
+  .us-map a:hover path,
+  .us-map a:focus-visible path,
+  .us-map a.lit path {
+    fill: var(--bright);
+  }
+  .us-map a:focus {
+    outline: none;
+  }
+  .codes text {
+    font: 500 13px var(--mono);
+    fill: var(--soft);
+    text-anchor: middle;
+    dominant-baseline: middle;
+    pointer-events: none;
+  }
+  .tip {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 5;
+    display: grid;
+    gap: 2px;
+    padding: 8px 12px;
+    background: var(--bright);
+    color: var(--on-bright);
+    pointer-events: none;
+    white-space: nowrap;
+    font-size: var(--fs-sm);
+  }
+  .tip strong {
+    font-weight: 500;
+  }
+
+  .state-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 2px 16px;
+    margin: 0;
+    list-style: none;
+  }
+  .state-list a {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 44px;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--line);
+    color: var(--soft);
+    transition: background 100ms ease;
+  }
+  .state-list a:hover,
+  .state-list a:focus-visible,
+  .state-list a.lit {
+    background: var(--raise);
+    color: var(--bright);
+  }
+  .code {
+    width: 2.4em;
+    font: 500 var(--fs-sm) var(--mono);
+    color: var(--muted);
+  }
+  /* Touch screens can't point, so the map's labels are what guide a tap. */
+  @media (max-width: 640px) {
+    .codes text {
+      font-size: 18px;
+    }
+  }
+</style>

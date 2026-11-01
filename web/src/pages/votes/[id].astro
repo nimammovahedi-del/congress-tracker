@@ -5,12 +5,16 @@ import Term from "../../components/Term.astro";
 import VoteVisualizer from "../../components/VoteVisualizer.astro";
 import Layout from "../../layouts/Layout.astro";
 import { memberStats, memberVotes, row, rows, type RollCall } from "../../lib/db";
-import { billNumberFromId, consoleDate, CONGRESS } from "../../lib/format";
+import { billNumberFromId, consoleDate, CONGRESS, officialVoteUrl } from "../../lib/format";
 import { explainQuestion, passed, ruleInfo, seatInfo, threshold } from "../../lib/votes";
 
 const id = Astro.params.id ?? "";
 const r = await row<RollCall>("SELECT * FROM roll_calls WHERE id = ?", id);
-if (!r) return Astro.rewrite("/404");
+// A vote that isn't loaded here yet opens on the House Clerk's or the Senate's site.
+if (!r) {
+  const official = officialVoteUrl(id);
+  return official ? Astro.redirect(official, 302) : Astro.rewrite("/404");
+}
 
 const [votes, stats, bill, session] = await Promise.all([
   memberVotes(id),

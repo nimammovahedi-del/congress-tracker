@@ -53,7 +53,7 @@ const fmt = (n: number) => n.toLocaleString("en-US");
         <li><strong>Free.</strong><span>For everyone, always.</span></li>
         <li><strong>Nonpartisan.</strong><span>No side, no spin. Just the record.</span></li>
         <li><strong>No ads.</strong><span>Nothing to sell you.</span></li>
-        <li><strong>No tracking.</strong><span>No accounts, no cookies. Addresses go only to the Census Bureau to find your district.</span></li>
+        <li><strong>No tracking.</strong><span>No accounts, no cookies. Street addresses go only to the Census Bureau; city and ZIP lookups use OpenStreetMap.</span></li>
         <li><strong>Public data.</strong><span>Straight from official sources, refreshed every hour.</span></li>
       </ul>
     </section>
@@ -68,6 +68,7 @@ const fmt = (n: number) => n.toLocaleString("en-US");
         <li><strong>@unitedstates project</strong><span>Members, contacts, photos</span></li>
         <li><strong>Federal Register</strong><span>Regulations and executive orders</span></li>
         <li><strong>U.S. Census Bureau</strong><span>District lookup</span></li>
+        <li><strong>OpenStreetMap</strong><span>City and ZIP code lookup</span></li>
       </ul>
       <details class="method">
         <summary>How the numbers work</summary>
@@ -76,7 +77,7 @@ const fmt = (n: number) => n.toLocaleString("en-US");
           <li><strong>Votes with party</strong> is how often a member sided with their party on votes where most Democrats and most Republicans split. Independents count with Democrats, with whom they caucus.</li>
           <li><strong>Votes needed to pass</strong> follows each vote's rule: a simple majority, two-thirds for suspension votes and veto overrides, or 60 senators for cloture.</li>
           <li><strong>Senate member votes</strong> can trail the Senate by up to a month. Vice-presidential tie-breakers aren't in member records; the official result is shown.</li>
-          <li><strong>Summaries</strong> come from the nonpartisan Congressional Research Service. Some bills also get a plain-English overview written by AI, always labelled as such.</li>
+          <li><strong>Summaries</strong> come from the nonpartisan Congressional Research Service. Some bills also get a plain-English overview, with the case for and against, written by AI from the bill text.</li>
           <li>Senate votes cite Lewis, Poole, Rosenthal, Boche, Rudkin and Sonnet, <em>Voteview: Congressional Roll-Call Votes Database</em>, <a class="link" href="https://voteview.com/" rel="noopener">voteview.com</a>.</li>
         </ul>
       </details>

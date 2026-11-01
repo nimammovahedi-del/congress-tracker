@@ -6,11 +6,9 @@ import Panel from "../components/Panel.astro";
 import Terminal, { type Line } from "../components/Terminal.astro";
 import Layout from "../layouts/Layout.astro";
 import { memberStats, rows } from "../lib/db";
-import { CONGRESS, partyClass, PARTY, STATES } from "../lib/format";
+import { partyClass, PARTY, STATES } from "../lib/format";
+import { fromAddress, fromPlace, looksLikeStreetAddress, stateFromText, type Spot } from "../lib/locate";
 import { matchMembers } from "../lib/names";
-
-// The Census vintage whose congressional districts match the Congress being tracked.
-const VINTAGES: Record<number, string> = { 119: "ACS2025_Current", 120: "Current_Current" };
 
 interface Rep {
   bioguide_id: string;
@@ -37,36 +35,53 @@ let address = "";
 let byName: Rep[] | null = null;
 const lines: Line[] = [];
 
+// Set when the district comes from a city or ZIP code's center rather than a street address.
+let approximate = false;
+// Set when what was typed is a state: show its whole delegation.
+let wholeState = false;
+
 if (Astro.request.method === "POST") {
   address = String((await Astro.request.formData()).get("address") ?? "").trim().slice(0, 200);
-  if (address && !/\d/.test(address)) {
-    byName = matchMembers(address, await rows<Rep>(`SELECT ${REP_COLUMNS} FROM members WHERE in_office = 1 ORDER BY chamber DESC, last_name`));
-    if (!byName.length) error = "No member of Congress by that name. Check the spelling, enter a home address, or pick your state below.";
-  } else if (address) {
-    lines.push({ text: "Looking up the address with the U.S. Census Bureau…" });
-    try {
-      const url = new URL("https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress");
-      url.search = new URLSearchParams({ address, benchmark: "Public_AR_Current", vintage: VINTAGES[CONGRESS] ?? "Current_Current", format: "json" }).toString();
-      const res = await fetch(url, { signal: AbortSignal.timeout(12_000) });
-      const data = (await res.json()) as { result?: { addressMatches?: { matchedAddress: string; geographies: Record<string, Record<string, string>[]> }[] } };
-      const hit = data.result?.addressMatches?.[0];
-      if (!hit) {
-        error = "No match for that address. Check the street and city, or pick your state below.";
-        lines.push({ text: "No match found", tone: "alert" });
-      } else {
-        matched = hit.matchedAddress;
-        const geo = hit.geographies;
-        state = geo["States"]?.[0]?.STUSAB ?? "";
-        const cdKey = Object.keys(geo).find((k) => /Congressional Districts/.test(k));
-        const base = cdKey ? geo[cdKey]?.[0]?.BASENAME : undefined;
-        district = base === undefined ? null : /^\d+$/.test(base) ? Number(base) : 0; // non-numeric = at-large
-        lines.push({ text: `Match: ${matched}`, tone: "bright" });
-        lines.push({ text: `Congressional district: ${state}-${district === 0 ? "at large" : (district ?? "?")}`, tone: "bright" });
+  const members = () => rows<Rep>(`SELECT ${REP_COLUMNS} FROM members WHERE in_office = 1 ORDER BY chamber DESC, last_name`);
+  const useSpot = (spot: Spot) => {
+    state = spot.state;
+    district = spot.district;
+    matched = spot.label;
+    lines.push({ text: `Match: ${spot.label}`, tone: "bright" });
+    lines.push({ text: `Congressional district: ${spot.state}-${spot.district === 0 ? "at large" : (spot.district ?? "?")}`, tone: "bright" });
+  };
+  try {
+    const st = address ? stateFromText(address) : null;
+    if (st) {
+      // A state: its senators and every representative.
+      state = st;
+      wholeState = true;
+    } else if (address && looksLikeStreetAddress(address)) {
+      lines.push({ text: "Looking up the address with the U.S. Census Bureau…" });
+      const spot = await fromAddress(address);
+      if (spot) useSpot(spot);
+      else error = "We couldn't find that street address. Check the spelling, or try just your city or ZIP code.";
+    } else if (address) {
+      // A member's name first; otherwise a city, town or ZIP code; then a last name alone.
+      const all = await members();
+      const named = /\d/.test(address) ? [] : matchMembers(address, all, false);
+      if (named.length) byName = named;
+      else {
+        lines.push({ text: "Looking up the place…" });
+        const spot = await fromPlace(address);
+        if (spot) {
+          useSpot(spot);
+          approximate = true;
+        } else {
+          const loose = /\d/.test(address) ? [] : matchMembers(address, all);
+          if (loose.length) byName = loose;
+          else error = "Nothing matched that. Try a street address, a city or ZIP code, a state, or a member's name.";
+        }
       }
-    } catch {
-      error = "The Census Bureau's address lookup didn't respond. Try again, or pick your state below.";
-      lines.push({ text: "The lookup timed out", tone: "alert" });
     }
+  } catch {
+    error = "The lookup didn't respond. Try again, or pick your state below.";
+    lines.push({ text: "The lookup timed out", tone: "alert" });
   }
 }
 
@@ -91,10 +106,10 @@ const seatLabel = (r: Rep) => (r.chamber === "senate" ? (byName ? `Senator · ${
       <Panel>
         <form class="panel-body cmd" method="post" action="/find#results">
           <h1 class="cmd-title">Find your representatives</h1>
-          <label class="cmd-label" for="addr">Your home address, or a member's name</label>
+          <label class="cmd-label" for="addr">Where you live, or a member's name</label>
           <div class="cmd-line">
             <span aria-hidden="true">&gt;</span>
-            <input id="addr" name="address" type="text" placeholder="Street address, city, state" autocomplete="street-address" value={address} required />
+            <input id="addr" name="address" type="text" placeholder="Address, city, ZIP, state, or name" value={address} required />
             <button class="go" type="submit" data-busy="Looking up…">Find</button>
           </div>
         </form>
@@ -106,6 +121,7 @@ const seatLabel = (r: Rep) => (r.chamber === "senate" ? (byName ? `Senator · ${
             {Object.entries(STATES).map(([code, name]) => <option value={code} selected={code === validState}>{name}</option>)}
           </select>
           <noscript><button class="btn ghost" type="submit">Show</button></noscript>
+          <a class="map-link" href="/states">Pick from a map →</a>
         </form>
         {
           (lines.length > 0 || reps.length > 0) && (
@@ -129,10 +145,11 @@ const seatLabel = (r: Rep) => (r.chamber === "senate" ? (byName ? `Senator · ${
           <section class="group">
             <h2 class="group-title">
               {g.title}
-              {matched && <span class="group-for"> · for {matched}</span>}
+              {matched && <span class="group-for"> · {approximate ? "near" : "for"} {matched}</span>}
               {!matched && byName && <span class="group-for"> · matching “{address}”</span>}
               {!matched && !byName && validState && <span class="group-for"> · {STATES[validState]}</span>}
             </h2>
+            {gi === 0 && approximate && <p class="note group-note">Cities and ZIP codes can span more than one district. Enter your street address for an exact match.</p>}
             {gi === 0 && <p class="note group-note">“Votes with party”: how often they sided with their party when the two parties split.</p>}
             {/* A big state's House list shows its first few members and a button for the rest
                 (every card shows without JavaScript). */}
@@ -191,6 +208,17 @@ const seatLabel = (r: Rep) => (r.chamber === "senate" ? (byName ? `Senator · ${
 </script>
 
 <style>
+  .map-link {
+    display: inline-block;
+    margin-top: 12px;
+    font-weight: 500;
+    color: var(--soft);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .map-link:hover {
+    color: var(--bright);
+  }
   /* The address form sits in the dark page like the home search: the inset field and button
      are styled in global.css. */
   .cmd {
