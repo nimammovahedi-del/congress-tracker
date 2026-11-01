@@ -100,7 +100,7 @@ const EXAMPLES = ["H.R. 1", "border security", "veterans", "Medicare", "farm"];
         {
           !q && (
             <p class="hint">
-              Search matches bill titles and summaries, topics, and members' names and states, so everyday words work. Try:{" "}
+              Everyday words work. Try:{" "}
               {EXAMPLES.map((e, i) => (
                 <>
                   {i > 0 && " · "}
@@ -129,8 +129,8 @@ const EXAMPLES = ["H.R. 1", "border security", "veterans", "Medicare", "farm"];
         <Panel label="Matching topics" class="results">
           <div class="panel-body topic-hits">
             {topicHits.map((t) => (
-              <a class="toggle" href={t.href}>
-                {t.area && <span class="faint">{t.area} ›</span>} {t.name} <span class="faint">{t.n.toLocaleString("en-US")}</span>
+              <a class="toggle" href={t.href} title={t.area ? `Part of ${t.area}` : undefined}>
+                {t.name} <span class="faint">{t.n.toLocaleString("en-US")}</span>
               </a>
             ))}
           </div>
@@ -148,7 +148,7 @@ const EXAMPLES = ["H.R. 1", "border security", "veterans", "Medicare", "farm"];
                   const context = matchContext(b);
                   return (
                     <>
-                      {b.close && !bills[i - 1]?.close && <li class="close-head">Close matches <span class="note">· these contain some of your words</span></li>}
+                      {b.close && !bills[i - 1]?.close && <li class="close-head">Close matches</li>}
                       <li>
                         <a href={`/bills/${b.id}`}>
                           <span class="tag">{billNumber(b.bill_type, b.number)}</span>
@@ -325,7 +325,7 @@ const EXAMPLES = ["H.R. 1", "border security", "veterans", "Medicare", "farm"];
     width: 32px;
     height: 39px;
     flex: none;
-    background: #0c0c0c;
+    background: var(--panel-2);
     border: 1px solid var(--line-2);
     overflow: hidden;
   }

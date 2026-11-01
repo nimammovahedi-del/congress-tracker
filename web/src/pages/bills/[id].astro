@@ -175,17 +175,6 @@ const PARTY_PLURAL: Record<string, string> = { D: "Democrats", R: "Republicans",
         <section class="tab-pane" id="summary">
           <header class="pane-head">
             <h2>What this {noun} does</h2>
-            <p>
-              {
-                ai && bill.crs_summary
-                  ? "A plain-English overview, then the official summary"
-                  : ai
-                    ? "Plain-English overview, written by AI from the bill text"
-                    : bill.crs_summary
-                      ? "Written by the Congressional Research Service"
-                      : "No summary yet"
-              }
-            </p>
           </header>
           {
             ai && (
@@ -221,7 +210,7 @@ const PARTY_PLURAL: Record<string, string> = { D: "Democrats", R: "Republicans",
             ) : (
               !ai && (
                 <div class="panel-body">
-                  <p class="empty">No summary yet · read the official title above or the bill text</p>
+                  <p class="empty">No summary yet</p>
                 </div>
               )
             )
@@ -231,14 +220,13 @@ const PARTY_PLURAL: Record<string, string> = { D: "Democrats", R: "Republicans",
         <section class="tab-pane" id="votes">
           <header class="pane-head">
             <h2>How Congress voted</h2>
-            <p>{rollCalls.length ? `${rollCalls.length} recorded ${rollCalls.length === 1 ? "vote" : "votes"} · the deciding one is shown seat by seat` : "No recorded votes yet"}</p>
           </header>
           {
             keyVote ? (
               <>
                 <VoteVisualizer rollCall={keyVote} votes={keyVotes} seats={seatInfo(keyVotes, stats)} billTitle={bill.title} embedded />
                 <div class="panel-body vote-actions">
-                  <a class="btn ghost" href={`/votes/${keyVote.id}`}>Open this vote's full record →</a>
+                  <a class="btn ghost" href={`/votes/${keyVote.id}`}>Full vote record →</a>
                 </div>
               </>
             ) : (
@@ -252,7 +240,7 @@ const PARTY_PLURAL: Record<string, string> = { D: "Democrats", R: "Republicans",
           {
             pendingVotes.length > 0 && (
               <div class="panel-body pending">
-                <p class="note">Senate votes still waiting for member-by-member detail (it arrives within about a month)</p>
+                <p class="note">Senate vote details arrive within about a month</p>
                 {pendingVotes.map((v) => (
                   <p class="pending-row"><span class="label">{consoleDate(v.action_date)}</span> {v.action_text}</p>
                 ))}
@@ -288,7 +276,6 @@ const PARTY_PLURAL: Record<string, string> = { D: "Democrats", R: "Republicans",
         <section class="tab-pane" id="timeline">
           <header class="pane-head">
             <h2>Timeline</h2>
-            <p>Every step this {noun} has taken, newest first.</p>
           </header>
           <ol class="history" data-clamp="620" data-more="Show the whole timeline" data-less="Show less">
             {
@@ -305,7 +292,7 @@ const PARTY_PLURAL: Record<string, string> = { D: "Democrats", R: "Republicans",
         <section class="tab-pane" id="cosponsors">
           <header class="pane-head">
             <h2>Cosponsors</h2>
-            <p>{active.length ? `${active.length} ${active.length === 1 ? "member" : "members"} signed on to support this ${noun} after it was introduced` : `No one has cosponsored this ${noun}`}</p>
+            <p>{active.length ? `${active.length} ${active.length === 1 ? "member" : "members"}` : "None yet"}</p>
           </header>
           {
             active.length > 0 && (
@@ -339,7 +326,6 @@ const PARTY_PLURAL: Record<string, string> = { D: "Democrats", R: "Republicans",
         <section class="tab-pane" id="details">
           <header class="pane-head">
             <h2>Details</h2>
-            <p>Related bills, cost estimates, and subject tags.</p>
           </header>
           <div class="details-grid">
             <div class="panel-body">
@@ -469,7 +455,7 @@ const PARTY_PLURAL: Record<string, string> = { D: "Democrats", R: "Republicans",
     display: block;
     aspect-ratio: 450 / 550;
     border: 1px solid var(--line-2);
-    background: #0c0c0c;
+    background: var(--panel-2);
     overflow: hidden;
   }
   .portrait img {
@@ -517,7 +503,7 @@ const PARTY_PLURAL: Record<string, string> = { D: "Democrats", R: "Republicans",
   .latest {
     margin: 22px 0 0;
     max-width: 75ch;
-    color: #cfcfcf;
+    color: var(--soft);
   }
   .links {
     display: flex;
@@ -541,7 +527,7 @@ const PARTY_PLURAL: Record<string, string> = { D: "Democrats", R: "Republicans",
     max-width: 68ch;
     font-size: var(--fs-lg);
     line-height: 1.65;
-    color: #e4e4e4;
+    color: var(--text);
   }
   /* For and against sit side by side in identical, neutral boxes so neither looks favored. */
   .debate {
@@ -561,7 +547,7 @@ const PARTY_PLURAL: Record<string, string> = { D: "Democrats", R: "Republicans",
   .side p:last-child {
     margin: 0;
     line-height: 1.6;
-    color: #d6d6d6;
+    color: var(--soft);
   }
   .official-head {
     margin-bottom: 10px;

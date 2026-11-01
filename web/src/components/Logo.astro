@@ -1,0 +1,10 @@
+---
+// The site's mark: the seats of a chamber, three rows in a half circle, like the seat chart
+// on vote pages. It takes the text color, so it works on either theme.
+interface Props {
+  size?: number;
+}
+const { size = 24 } = Astro.props;
+---
+
+<svg class="logo" viewBox="0 0 64 40" width={size} height={Math.round((size * 40) / 64)} fill="currentColor" aria-hidden="true"><circle cx="21.00" cy="36.00" r="2.7"/><circle cx="24.22" cy="28.22" r="2.7"/><circle cx="32.00" cy="25.00" r="2.7"/><circle cx="39.78" cy="28.22" r="2.7"/><circle cx="43.00" cy="36.00" r="2.7"/><circle cx="14.00" cy="36.00" r="2.7"/><circle cx="16.41" cy="27.00" r="2.7"/><circle cx="23.00" cy="20.41" r="2.7"/><circle cx="32.00" cy="18.00" r="2.7"/><circle cx="41.00" cy="20.41" r="2.7"/><circle cx="47.59" cy="27.00" r="2.7"/><circle cx="50.00" cy="36.00" r="2.7"/><circle cx="7.00" cy="36.00" r="2.7"/><circle cx="8.90" cy="26.43" r="2.7"/><circle cx="14.32" cy="18.32" r="2.7"/><circle cx="22.43" cy="12.90" r="2.7"/><circle cx="32.00" cy="11.00" r="2.7"/><circle cx="41.57" cy="12.90" r="2.7"/><circle cx="49.68" cy="18.32" r="2.7"/><circle cx="55.10" cy="26.43" r="2.7"/><circle cx="57.00" cy="36.00" r="2.7"/></svg>

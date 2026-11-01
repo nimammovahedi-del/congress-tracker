@@ -154,6 +154,15 @@ export function interceptLinks(): void {
   document.addEventListener("submit", (event) => {
     const form = event.target as HTMLFormElement;
     if (event.defaultPrevented || form.target || new URL(form.action, window.location.href).origin !== window.location.origin) return;
+    // Slow lookups (an address goes to the Census geocoder) say so on their button.
+    const busy = form.querySelector<HTMLButtonElement>("button[data-busy]");
+    if (busy) {
+      busy.dataset.idle = busy.textContent ?? "";
+      busy.textContent = busy.dataset.busy!;
+      busy.setAttribute("aria-disabled", "true");
+      form.setAttribute("aria-busy", "true");
+      form.addEventListener("submit", (e) => e.preventDefault(), { once: true }); // no double submits
+    }
     leaving();
   });
   // Table rows marked with data-href open their record when clicked anywhere.
@@ -167,6 +176,11 @@ export function interceptLinks(): void {
     if (!e.persisted) return;
     window.clearTimeout(leaveTimer);
     document.documentElement.classList.remove("leaving");
+    document.querySelectorAll<HTMLButtonElement>("button[data-busy][aria-disabled]").forEach((btn) => {
+      btn.textContent = btn.dataset.idle ?? btn.textContent;
+      btn.removeAttribute("aria-disabled");
+      btn.closest("form")?.removeAttribute("aria-busy");
+    });
   });
 }
 

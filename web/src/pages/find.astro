@@ -86,13 +86,12 @@ const seatLabel = (r: Rep) => (r.chamber === "senate" ? "Senator" : `Representat
       <Panel>
         <form class="panel-body cmd" method="post" action="/find#results">
           <h1 class="cmd-title">Find your representatives</h1>
-          <label class="cmd-label" for="addr">Enter your home address to see your two senators and your member of the House.</label>
+          <label class="cmd-label" for="addr">Your home address</label>
           <div class="cmd-line">
             <span aria-hidden="true">&gt;</span>
             <input id="addr" name="address" type="text" placeholder="Street address, city, state" autocomplete="street-address" value={address} required />
-            <button class="go" type="submit">Find</button>
+            <button class="go" type="submit" data-busy="Looking up…">Find</button>
           </div>
-          <p class="hint">Your address goes only to the U.S. Census Bureau's address lookup to find your district. It isn't stored.</p>
         </form>
       </Panel>
       <Panel label="Or pick a state">
@@ -128,7 +127,7 @@ const seatLabel = (r: Rep) => (r.chamber === "senate" ? "Senator" : `Representat
               {matched && <span class="group-for"> · for {matched}</span>}
               {!matched && validState && <span class="group-for"> · {STATES[validState]}</span>}
             </h2>
-            {gi === 0 && <p class="note group-note">“Votes with party” is how often they voted with most of their own party on votes where most Democrats and most Republicans took opposite sides.</p>}
+            {gi === 0 && <p class="note group-note">“Votes with party”: how often they sided with their party when the two parties split.</p>}
             {/* A big state's House list shows its first few members and a button for the rest
                 (every card shows without JavaScript). */}
             <div class="nodes" data-fold={g.list.length > FOLD + 2 ? FOLD : undefined}>
@@ -259,7 +258,7 @@ const seatLabel = (r: Rep) => (r.chamber === "senate" ? "Senator" : `Representat
     position: relative;
     aspect-ratio: 450 / 550;
     border: 1px solid var(--line-2);
-    background: #070707;
+    background: var(--overlay);
     overflow: hidden;
   }
   .vf img {
@@ -279,7 +278,7 @@ const seatLabel = (r: Rep) => (r.chamber === "senate" ? "Senator" : `Representat
     width: 22px;
     height: 22px;
     margin: -11px 0 0 -11px;
-    border: 1px solid rgb(255 255 255 / 35%);
+    border: 1px solid rgb(var(--tint) / 35%);
     border-radius: 50%;
   }
   .info {

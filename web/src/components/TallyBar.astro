@@ -70,7 +70,7 @@ const label = segments.map((s) => `${NAMES[s.p]} ${s.position === "yea" ? "yes" 
     height: var(--h);
     padding: 2px;
     border: 1px solid var(--line-2);
-    background: #0e0e0e;
+    background: var(--panel-2);
   }
   .seg {
     min-width: 2px;
@@ -116,7 +116,7 @@ const label = segments.map((s) => `${NAMES[s.p]} ${s.position === "yea" ? "yes" 
     width: 2px;
     margin-left: -1px;
     background: var(--bright);
-    box-shadow: 0 0 0 1px #050505;
+    box-shadow: 0 0 0 1px var(--bg);
   }
   .legend {
     display: flex;
@@ -139,8 +139,8 @@ const label = segments.map((s) => `${NAMES[s.p]} ${s.position === "yea" ? "yes" 
   }
   .sw.no {
     background:
-      repeating-linear-gradient(135deg, #bdbdbd 0 2px, transparent 2px 5px),
-      #2a2a2a;
+      repeating-linear-gradient(135deg, var(--soft) 0 2px, transparent 2px 5px),
+      var(--dim);
   }
   .sw.line {
     width: 2px;

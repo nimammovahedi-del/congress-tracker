@@ -1,7 +1,8 @@
 ---
 import "../styles/global.css";
-import { lastSync, stat, type Topic } from "../lib/db";
-import { ago, CONGRESS, SITE_NAME } from "../lib/format";
+import Logo from "../components/Logo.astro";
+import { stat, type Topic } from "../lib/db";
+import { CONGRESS, ordinal, SITE_NAME } from "../lib/format";
 
 // One step of the breadcrumb trail shown above the page; the last one is the current page.
 export interface Crumb {
@@ -14,7 +15,8 @@ interface Props {
   crumbs?: Crumb[];
 }
 const { title, description = "Follow bills, votes, and your representatives in the U.S. Congress. Free.", crumbs = [] } = Astro.props;
-const [topics, synced] = await Promise.all([stat<Topic[]>("topics"), lastSync()]);
+const topics = await stat<Topic[]>("topics");
+const ordinalCongress = ordinal(CONGRESS);
 const path = Astro.url.pathname;
 const current = (prefix: string) => (path === prefix || path.startsWith(`${prefix}/`) ? "page" : undefined);
 // On the search page the bar's field keeps the words being searched for.
@@ -36,6 +38,16 @@ const query = path === "/search" ? (Astro.url.searchParams.get("q") ?? "").slice
     <link rel="preload" href="/fonts/switzer-300.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/switzer-500.woff2" as="font" type="font/woff2" crossorigin />
     <script is:inline>
+      // The theme, set before the first paint so a light page never flashes dark. Dark is the
+      // default; the switch in the site bar saves a choice of light.
+      (function (html) {
+        var theme = "dark";
+        try {
+          if (localStorage.getItem("ct-theme") === "light") theme = "light";
+        } catch (e) {}
+        html.dataset.theme = theme;
+        document.querySelector('meta[name="theme-color"]').content = theme === "light" ? "#f6f5f1" : "#050505";
+      })(document.documentElement);
       // Motion classes, set before the first paint. .fx turns the effects on, unless the
       // visitor asked for reduced motion. .calm marks every page after the first one of a
       // browser session: it arrives with a quick fade instead of the full sequence (fx.ts).
@@ -65,7 +77,7 @@ const query = path === "/search" ? (Astro.url.searchParams.get("q") ?? "").slice
   <body>
     <a class="skip" href="#main">Skip to content</a>
     <header class="site-bar">
-      <a class="brand" href="/"><span class="sq" aria-hidden="true"></span>{SITE_NAME}</a>
+      <a class="brand" href="/"><Logo size={26} />{SITE_NAME}</a>
 
       <nav id="site-nav" class="nav" aria-label="Main">
         <ul>
@@ -79,7 +91,6 @@ const query = path === "/search" ? (Astro.url.searchParams.get("q") ?? "").slice
               topics && topics.length > 0 && (
                 <div class="mega" id="topics-menu">
                   <div class="mega-inner">
-                    <p class="note mega-title">Bills by policy area. Point at one, or move to it with Tab, to see its subtopics.</p>
                     <ul class="mega-areas">
                       {topics.map((t, i) => (
                         <li class={i === 0 ? "first" : undefined}>
@@ -113,7 +124,7 @@ const query = path === "/search" ? (Astro.url.searchParams.get("q") ?? "").slice
           <li><a href="/members" aria-current={current("/members")}>Members</a></li>
           <li><a href="/find" aria-current={current("/find")}>Find my rep</a></li>
           <li><a href="/analytics" aria-current={current("/analytics")}>Analytics</a></li>
-          <li class="only-mobile"><a href="/about" aria-current={current("/about")}>About the data</a></li>
+          <li><a href="/about" aria-current={current("/about")}>About</a></li>
         </ul>
       </nav>
 
@@ -128,9 +139,12 @@ const query = path === "/search" ? (Astro.url.searchParams.get("q") ?? "").slice
         <button class="btn bar-go" type="submit">Search</button>
       </form>
 
-      <div class="status">
-        <span class="sync" title="When this site last checked Congress for new records (it checks every hour)"><i class="dot ok" aria-hidden="true"></i>Updated <b>{ago(synced)}</b></span>
-      </div>
+      <button class="theme-switch" type="button" role="switch" aria-checked="false" aria-label="Light mode">
+        <span class="knob" aria-hidden="true">
+          <svg class="moon" viewBox="0 0 16 16"><path d="M13 9.6A5.5 5.5 0 0 1 6.4 3a5.5 5.5 0 1 0 6.6 6.6Z" /></svg>
+          <svg class="sun" viewBox="0 0 16 16"><circle cx="8" cy="8" r="3" /><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1" /></svg>
+        </span>
+      </button>
       <a class="search-toggle" href="/search" aria-controls="bar-search" aria-expanded="false">
         <svg class="mag" viewBox="0 0 16 16" aria-hidden="true"><circle cx="6.8" cy="6.8" r="5" /><path d="M10.6 10.6 15 15" /></svg>
         <span class="visually-hidden">Search</span>
@@ -195,18 +209,12 @@ const query = path === "/search" ? (Astro.url.searchParams.get("q") ?? "").slice
     </script>
 
     <footer class="site-foot">
-      <nav class="foot-nav" aria-label="Site">
-        <a href="/">Home</a>
-        <a href="/topics">Topics</a>
-        <a href="/votes">Votes</a>
-        <a href="/members">Members</a>
-        <a href="/find">Find my rep</a>
-        <a href="/analytics">Analytics</a>
+      <span>Free and nonpartisan · Not affiliated with Congress · {ordinalCongress} Congress</span>
+      <nav class="foot-nav" aria-label="More">
+        <a href="/about">About</a>
+        <a href="/about#sources">Data sources</a>
         <a href="/search">Search</a>
-        <a href="/about">About the data</a>
       </nav>
-      <span>Built on public data: Congress.gov · GovInfo · House Clerk · Voteview · Federal Register</span>
-      <span>Free and nonpartisan · Not affiliated with Congress · {CONGRESS}th Congress · {new Date().getFullYear()}</span>
     </footer>
 
     <script>
@@ -214,6 +222,20 @@ const query = path === "/search" ? (Astro.url.searchParams.get("q") ?? "").slice
 
       boot();
       interceptLinks();
+
+      // Light/dark switch: flips the theme now and remembers the choice on this device.
+      const themeSwitch = document.querySelector<HTMLButtonElement>(".theme-switch")!;
+      const showTheme = () => themeSwitch.setAttribute("aria-checked", String(document.documentElement.dataset.theme === "light"));
+      showTheme();
+      themeSwitch.addEventListener("click", () => {
+        const light = document.documentElement.dataset.theme !== "light";
+        document.documentElement.dataset.theme = light ? "light" : "dark";
+        document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')!.content = light ? "#f6f5f1" : "#050505";
+        try {
+          localStorage.setItem("ct-theme", light ? "light" : "dark");
+        } catch {}
+        showTheme();
+      });
       initClamp();
       initTabs();
 
@@ -360,7 +382,7 @@ const query = path === "/search" ? (Astro.url.searchParams.get("q") ?? "").slice
     z-index: 80;
     padding: 10px 14px;
     background: var(--bright);
-    color: #050505;
+    color: var(--on-bright);
     font: 500 var(--fs-sm) var(--font);
   }
   .skip:focus {
@@ -386,7 +408,7 @@ const query = path === "/search" ? (Astro.url.searchParams.get("q") ?? "").slice
     position: absolute;
     inset: 0;
     z-index: -1;
-    background: rgb(5 5 5 / 92%);
+    background: rgb(var(--scrim) / 92%);
     backdrop-filter: blur(10px);
   }
   .brand {
@@ -400,11 +422,6 @@ const query = path === "/search" ? (Astro.url.searchParams.get("q") ?? "").slice
     text-transform: uppercase;
     color: var(--bright);
     white-space: nowrap;
-  }
-  .sq {
-    width: 8px;
-    height: 8px;
-    background: var(--bright);
   }
   .nav {
     flex: 0 0 auto;
@@ -487,24 +504,60 @@ const query = path === "/search" ? (Astro.url.searchParams.get("q") ?? "").slice
     display: inline-block;
     transform: rotate(180deg);
   }
-  .status {
-    display: flex;
-    align-items: center;
-    gap: 18px;
-    white-space: nowrap;
+  /* Light/dark switch: a small track with a knob that slides over and shows a sun or a moon. */
+  .theme-switch {
+    flex: 0 0 auto;
+    position: relative;
+    width: 46px;
+    height: 26px;
+    padding: 0;
+    border: 1px solid var(--line-2);
+    border-radius: 13px;
+    background: var(--field);
+    cursor: pointer;
+    transition: border-color 120ms ease;
   }
-  .status {
-    font: 400 var(--fs-sm)/1.2 var(--font);
-    color: var(--muted);
+  .theme-switch:hover {
+    border-color: var(--muted);
   }
-  .status b {
-    font-weight: 400;
-    color: var(--text);
+  .theme-switch:focus-visible {
+    outline: 2px solid var(--bright);
+    outline-offset: 2px;
   }
-  .sync {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
+  .knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--bright);
+    color: var(--on-bright);
+    transition: transform 200ms var(--ease);
+  }
+  .theme-switch[aria-checked="true"] .knob {
+    transform: translateX(20px);
+  }
+  .knob svg {
+    width: 12px;
+    height: 12px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+  }
+  .moon {
+    fill: currentColor !important;
+    stroke: none !important;
+  }
+  .sun,
+  .theme-switch[aria-checked="true"] .moon {
+    display: none;
+  }
+  .theme-switch[aria-checked="true"] .sun {
+    display: block;
   }
   /* The search field sits in the middle of the bar, in the space between the links and the
      update time. */
@@ -515,8 +568,8 @@ const query = path === "/search" ? (Astro.url.searchParams.get("q") ?? "").slice
     gap: 8px;
     flex: 1 1 200px;
     min-width: 0;
-    max-width: 460px;
-    margin: 0 auto;
+    max-width: 420px;
+    margin: 0 0 0 auto;
   }
   .mag {
     width: 15px;
@@ -614,9 +667,9 @@ const query = path === "/search" ? (Astro.url.searchParams.get("q") ?? "").slice
     right: 0;
     visibility: hidden;
     clip-path: inset(0 0 100% 0);
-    background: #070707;
+    background: var(--overlay);
     border-bottom: 1px solid var(--line-2);
-    box-shadow: 0 24px 48px rgb(0 0 0 / 60%);
+    box-shadow: 0 24px 48px var(--shadow);
     transition:
       clip-path 220ms var(--ease) 140ms,
       visibility 0s linear 360ms;
@@ -669,7 +722,7 @@ const query = path === "/search" ? (Astro.url.searchParams.get("q") ?? "").slice
     padding: 8px 10px;
     border-bottom: 1px solid var(--line);
     font-size: 0.9rem;
-    color: #bdbdbd;
+    color: var(--soft);
   }
   .count {
     font: var(--fs-xs) var(--mono);
@@ -706,7 +759,7 @@ const query = path === "/search" ? (Astro.url.searchParams.get("q") ?? "").slice
     display: block;
     padding: 6px 0;
     font-size: 0.9rem;
-    color: #bdbdbd;
+    color: var(--soft);
   }
   .mega-subs li a:hover {
     color: var(--bright);
@@ -754,9 +807,6 @@ const query = path === "/search" ? (Astro.url.searchParams.get("q") ?? "").slice
   }
 
   @media (max-width: 1180px) {
-    .sync {
-      display: none;
-    }
     .nav > ul > li > a {
       padding: 0 10px;
     }
@@ -771,11 +821,8 @@ const query = path === "/search" ? (Astro.url.searchParams.get("q") ?? "").slice
     .menu-toggle {
       display: block;
     }
-    .status {
+    .theme-switch {
       margin-left: auto;
-    }
-    .sync {
-      display: inline-flex;
     }
     /* Phones: the magnifier opens the field as a full-width row under the bar. */
     .search-toggle {
@@ -792,7 +839,7 @@ const query = path === "/search" ? (Astro.url.searchParams.get("q") ?? "").slice
       padding: 12px var(--gap);
       background: var(--bg);
       border-bottom: 1px solid var(--line-2);
-      box-shadow: 0 18px 36px rgb(0 0 0 / 65%);
+      box-shadow: 0 18px 36px var(--shadow);
     }
     :global(body.search-open) .bar-search {
       display: flex;
@@ -865,23 +912,25 @@ const query = path === "/search" ? (Astro.url.searchParams.get("q") ?? "").slice
       animation: drop-in 180ms var(--ease);
     }
   }
+  /* Narrow phones: the brand, the theme switch, search and menu share the bar tightly. */
+  @media (max-width: 420px) {
+    .site-bar {
+      gap: 4px;
+    }
+  }
   @keyframes drop-in {
     from {
       opacity: 0;
       transform: translateY(-8px);
     }
   }
-  @media (max-width: 420px) {
-    .sync {
-      display: none;
-    }
-  }
 
   .site-foot {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     justify-content: space-between;
-    gap: 10px 24px;
+    gap: 8px 24px;
     font: 400 var(--fs-sm)/1.5 var(--font);
     color: var(--muted);
     max-width: var(--maxw);
@@ -893,13 +942,9 @@ const query = path === "/search" ? (Astro.url.searchParams.get("q") ?? "").slice
     display: flex;
     flex-wrap: wrap;
     gap: 4px 20px;
-    width: 100%;
-    padding-bottom: 12px;
-    border-bottom: 1px solid var(--line);
   }
   .foot-nav a {
     padding: 6px 0;
-    font-size: 0.94rem;
     color: var(--text);
   }
   .foot-nav a:hover {

@@ -169,7 +169,6 @@ const stateName = m.state ? (STATES[m.state] ?? m.state) : null;
             <section class="tab-pane" id="sponsored">
               <header class="pane-head">
                 <h2>Bills they sponsored</h2>
-                <p>{sponsored.length < (s?.sponsored ?? 0) ? `The ${sponsored.length} with the most recent action, of ${s?.sponsored} this Congress` : "This Congress, most recent action first"}</p>
               </header>
               {
                 sponsored.length ? (
@@ -193,7 +192,6 @@ const stateName = m.state ? (STATES[m.state] ?? m.state) : null;
             <section class="tab-pane" id="background">
               <header class="pane-head">
                 <h2>Background</h2>
-                <p>Time in office and where their voting record sits.</p>
               </header>
               <div class="bg-grid">
                 <div class="panel-body">
@@ -215,7 +213,7 @@ const stateName = m.state ? (STATES[m.state] ?? m.state) : null;
                         <span class="mark" />
                       </div>
                       <div class="scale-ends label"><span>−1 · Liberal</span><span>0</span><span>Conservative · +1</span></div>
-                      <p class="note">From Voteview at UCLA. Members who vote alike sit close together on this line.</p>
+                      <p class="note">Members who vote alike sit close together.</p>
                     </div>
                   )
                 }
@@ -236,7 +234,7 @@ const stateName = m.state ? (STATES[m.state] ?? m.state) : null;
     background:
       linear-gradient(var(--line), var(--line)) 50% 0 / 1px 100% no-repeat,
       linear-gradient(var(--line), var(--line)) 0 50% / 100% 1px no-repeat,
-      #070707;
+      var(--overlay);
     overflow: hidden;
   }
   .viewfinder img {
@@ -264,7 +262,7 @@ const stateName = m.state ? (STATES[m.state] ?? m.state) : null;
     width: 30px;
     height: 30px;
     margin: -15px 0 0 -15px;
-    border: 1px solid rgb(255 255 255 / 35%);
+    border: 1px solid rgb(var(--tint) / 35%);
     border-radius: 50%;
   }
   .corner {
@@ -272,7 +270,7 @@ const stateName = m.state ? (STATES[m.state] ?? m.state) : null;
     left: 8px;
     bottom: 8px;
     padding: 3px 7px;
-    background: rgb(5 5 5 / 82%);
+    background: rgb(var(--scrim) / 82%);
     color: var(--ok);
   }
   .addr {
@@ -343,7 +341,7 @@ const stateName = m.state ? (STATES[m.state] ?? m.state) : null;
     height: 16px;
     background:
       linear-gradient(90deg, rgb(74 108 255 / 35%), transparent 45%, transparent 55%, rgb(255 69 69 / 35%)),
-      repeating-linear-gradient(90deg, #262626 0 1px, transparent 1px 10%);
+      repeating-linear-gradient(90deg, var(--line-2) 0 1px, transparent 1px 10%);
     border: 1px solid var(--line-2);
   }
   .mark {
@@ -354,7 +352,7 @@ const stateName = m.state ? (STATES[m.state] ?? m.state) : null;
     width: 3px;
     margin-left: -1px;
     background: var(--bright);
-    box-shadow: 0 0 10px rgb(255 255 255 / 60%);
+    box-shadow: 0 0 10px rgb(var(--glow) / 60%);
   }
   .scale-ends {
     display: flex;

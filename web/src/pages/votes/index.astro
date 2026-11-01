@@ -1,6 +1,5 @@
 ---
 import Panel from "../../components/Panel.astro";
-import Terminal from "../../components/Terminal.astro";
 import Layout from "../../layouts/Layout.astro";
 import { rows, type RollCall } from "../../lib/db";
 import { consoleDate, CONGRESS } from "../../lib/format";
@@ -90,9 +89,9 @@ const inspect = Object.fromEntries(
     <div class="cols votes-grid">
       <Panel class="queue">
         <div class="panel-body queue-head">
-          <h1 class="title">Every roll-call vote</h1>
+          <h1 class="title">Votes in Congress</h1>
           <p class="sub">
-            A roll-call vote is one where each member's yes or no is recorded by name. {CONGRESS}th Congress · showing {records.length} of {totalCount.toLocaleString("en-US")}{totalCount === allCount ? "" : ` matching (${allCount.toLocaleString("en-US")} in all)`} · newest first
+            {totalCount === allCount ? `${allCount.toLocaleString("en-US")} recorded votes` : `${totalCount.toLocaleString("en-US")} of ${allCount.toLocaleString("en-US")} votes match`} · newest first
           </p>
         </div>
         <div class="panel-body filters">
@@ -203,7 +202,7 @@ const inspect = Object.fromEntries(
             <span class="tag big-tag" data-v="m">No vote selected</span>
             <span class="status-tag neutral" data-v="res">---</span>
           </div>
-          <p class="insp-title" data-v="t">Point at a vote in the list, or Tab to it, to preview it here</p>
+          <p class="insp-title" data-v="t">Point at a vote to preview it</p>
           <p class="note" data-v="q">--</p>
         </div>
         <div class="panel-body">
@@ -224,7 +223,6 @@ const inspect = Object.fromEntries(
           </div>
           <a class="btn open" href="/votes" data-v="open" hidden>Open this vote →</a>
         </div>
-        <Terminal lines={[{ text: `${totalCount.toLocaleString("en-US")} ${totalCount === 1 ? "vote" : "votes"} in this list, newest first` }, { text: "Point at a row to preview it here", tone: "bright" }, { text: "Click a row to open the full vote", tone: "ok" }]} delay={300} />
       </Panel>
     </div>
     <script type="application/json" id="inspect-data" set:html={JSON.stringify(inspect)} />
@@ -389,13 +387,13 @@ const inspect = Object.fromEntries(
   .hatch {
     height: 10px;
     margin-bottom: 8px;
-    background: repeating-linear-gradient(135deg, #2b2b2b 0 2px, transparent 2px 5px);
+    background: repeating-linear-gradient(135deg, var(--g1) 0 2px, transparent 2px 5px);
   }
   .hatch span {
     display: block;
     height: 100%;
     width: 0;
-    background: repeating-linear-gradient(135deg, #e6e6e6 0 2px, transparent 2px 5px);
+    background: repeating-linear-gradient(135deg, var(--text) 0 2px, transparent 2px 5px);
     transition: width 260ms var(--ease);
   }
   .fields {

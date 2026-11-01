@@ -53,14 +53,15 @@ const UNITY_TIP = "On votes where most Democrats and most Republicans voted on o
   {/* What the vote was and how it came out, above both views, so it stays put when the view
       changes. On vote pages it holds the page title; on bill pages the bill is named above. */}
   <header class="viz-head">
-    <p class="label entry"><span class="sq-mini"></span> {chamberName} vote {r.roll_number} <span class="faint">·</span> {consoleDate(r.vote_date)}</p>
+    <p class="label entry"><span class="sq-mini"></span> {chamberName} vote {r.roll_number}{!embedded && heading !== `${chamberName} vote ${r.roll_number}` && <> <span class="faint">·</span> {heading}</>} <span class="faint">·</span> {consoleDate(r.vote_date)}</p>
     {
       embedded ? (
         <p class="question-big">{r.question ?? "Recorded vote"}</p>
       ) : (
         <>
-          <h1 class="measure cursor"><span data-scramble>{heading}</span></h1>
-          {billTitle && (r.bill_id ? <a class="bill-title" href={`/bills/${r.bill_id}`}>{billTitle} <span aria-hidden="true">→</span></a> : <p class="bill-title">{billTitle}</p>)}
+          {/* The title says what was voted on; the roll-call reference sits in the label above. */}
+          <h1 class:list={["measure", (billTitle ?? r.question ?? heading).length > 40 && "long"]}>{billTitle ?? r.question ?? heading}</h1>
+          {r.bill_id && <a class="bill-title" href={`/bills/${r.bill_id}`}>Open the bill <span aria-hidden="true">→</span></a>}
           <p class="question"><span class="label">The question</span> {r.question ?? "Recorded vote"}</p>
         </>
       )
@@ -112,8 +113,7 @@ const UNITY_TIP = "On votes where most Democrats and most Republicans voted on o
             }
           </span>
         </div>
-        <p class="note tip">Click a seat to open that member's page. With the keyboard, Tab to the chart and use the arrow keys.</p>
-        <p class="note touch-tip">Tap a seat to see who sat there; tap it again to open their page. The Member list tab shows everyone's vote.</p>
+        <p class="note touch-tip">Tap a seat to see who sat there; tap again to open their page.</p>
       </div>
 
       <aside class="inspector" aria-label="Selected member">
@@ -518,10 +518,17 @@ const UNITY_TIP = "On votes where most Democrats and most Republicans voted on o
     letter-spacing: -0.04em;
     margin: 0 0 10px;
   }
+  .measure.long {
+    max-width: 30ch;
+    font-size: clamp(1.6rem, 1.2rem + 1.6vw, 2.6rem);
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    line-height: 1.12;
+  }
   .bill-title {
     display: block;
     font-size: 1.12rem;
-    color: #c9c9c9;
+    color: var(--soft);
     max-width: 60ch;
     margin-bottom: 8px;
   }
@@ -587,7 +594,7 @@ const UNITY_TIP = "On votes where most Democrats and most Republicans voted on o
     stroke-width: 0.4;
   }
   .dais {
-    fill: #444;
+    fill: var(--g2);
   }
   .seat {
     stroke-width: 0.9;
@@ -711,7 +718,7 @@ const UNITY_TIP = "On votes where most Democrats and most Republicans voted on o
     background:
       linear-gradient(var(--line), var(--line)) 50% 0 / 1px 100% no-repeat,
       linear-gradient(var(--line), var(--line)) 0 50% / 100% 1px no-repeat,
-      #070707;
+      var(--overlay);
     overflow: hidden;
   }
   .viewfinder img {
@@ -857,7 +864,7 @@ const UNITY_TIP = "On votes where most Democrats and most Republicans voted on o
     font-variant-numeric: tabular-nums;
   }
   .tnum.dimnum {
-    color: #8a8a8a;
+    color: var(--muted);
   }
   .margin {
     border: 1px solid var(--line-2);
@@ -902,7 +909,7 @@ const UNITY_TIP = "On votes where most Democrats and most Republicans voted on o
   .pbar {
     height: 3px;
     margin: 10px 0;
-    background: #222;
+    background: var(--track);
   }
   .pbar span {
     display: block;

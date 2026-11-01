@@ -132,7 +132,6 @@ const mostMissed = members.filter((m) => m.in_office && m.votes >= 50).sort((a, 
       <section class="tab-pane" id="bills">
       <header class="pane-head sec-head">
         <h2>How bills move through Congress</h2>
-        <p>How far bills get, and how many are introduced and signed into law each month.</p>
       </header>
       <div class="cols cols-2 charts">
         <Panel label="How far bills get" class="chart-panel" id="funnel">
@@ -161,7 +160,7 @@ const mostMissed = members.filter((m) => m.in_office && m.votes >= 50).sort((a, 
                       })}
                     </div>
                   ))}
-                  <p class="note">Bills and joint resolutions only. Each bar is the share of all those introduced that reached the step. Point at or tap a bar for its numbers.</p>
+                  <p class="note">Share of bills that reached each step.</p>
                 </div>
               ))
             }
@@ -197,7 +196,6 @@ const mostMissed = members.filter((m) => m.in_office && m.votes >= 50).sort((a, 
       <section class="tab-pane" id="party-voting">
       <header class="pane-head sec-head">
         <h2>Voting with the party</h2>
-        <p>Where each member stands, and how many votes split the parties each month.</p>
       </header>
       <div class="cols cols-2 charts">
         <Panel label="How often members vote with their party" class="chart-panel">
@@ -243,7 +241,7 @@ const mostMissed = members.filter((m) => m.in_office && m.votes >= 50).sort((a, 
                 </div>
               ))
             }
-            <p class="note">Each mark is one member, placed by how often they voted with their party when the two parties split. Independents are counted with Democrats. Point at or tap a mark to see who it is.</p>
+            <p class="note">Each mark is one member, placed by how often they sided with their party when the parties split. Independents count with Democrats.</p>
           </div>
         </Panel>
 
@@ -254,7 +252,7 @@ const mostMissed = members.filter((m) => m.in_office && m.votes >= 50).sort((a, 
               <button class="toggle" type="button" aria-pressed="false" data-show="senate">Senate</button>
             </div>
             {["house", "senate"].map((c) => <div data-view={c} hidden={c !== "house"}><Bars data={marginSeries(c)} height={200} unit="%" max={100} tone="dim" /></div>)}
-            <p class="note">Votes where most Democrats and most Republicans voted opposite ways, as a share of all recorded votes that month</p>
+            <p class="note">Share of each month’s votes that split the parties</p>
           </div>
         </Panel>
       </div>
@@ -263,8 +261,7 @@ const mostMissed = members.filter((m) => m.in_office && m.votes >= 50).sort((a, 
 
       <section class="tab-pane" id="topic-trends">
       <header class="pane-head sec-head">
-        <h2>Bills by topic over time</h2>
-        <p>Bills and resolutions introduced each quarter in the ten busiest policy areas.</p>
+        <h2>Busiest topics over time</h2>
       </header>
       <Panel label="Bills introduced per quarter, by topic" class="trends-panel">
         <div class="panel-body multiples">
@@ -291,15 +288,13 @@ const mostMissed = members.filter((m) => m.in_office && m.votes >= 50).sort((a, 
             })
           }
         </div>
-        <p class="note pad">Ten busiest policy areas · all panels share one scale</p>
       </Panel>
 
       </section>
 
       <section class="tab-pane" id="attendance">
       <header class="pane-head sec-head">
-        <h2>Missed votes</h2>
-        <p>Members serving now who missed the largest share of recorded votes.</p>
+        <h2>Who misses the most votes</h2>
       </header>
       <Panel label="Most missed votes · members serving now">
         <div class="table-scroll">
@@ -467,19 +462,19 @@ const mostMissed = members.filter((m) => m.in_office && m.votes >= 50).sort((a, 
   }
   .frow:hover .track,
   .frow:focus .track {
-    background: #1c1c1c;
+    background: var(--raise);
   }
   .who {
     width: 14px;
   }
   .track {
     height: 14px;
-    background: #141414;
+    background: var(--track);
   }
   .fill {
     display: block;
     height: 100%;
-    background: #e5e5e5;
+    background: var(--text);
   }
   .fill.dem {
     background: var(--dem);
@@ -625,7 +620,7 @@ const mostMissed = members.filter((m) => m.in_office && m.votes >= 50).sort((a, 
   .mini i {
     display: block;
     width: 100%;
-    background: #8a8a8a;
+    background: var(--g3);
   }
   .mini span:hover i,
   .mini span:focus i {
@@ -657,7 +652,7 @@ const mostMissed = members.filter((m) => m.in_office && m.votes >= 50).sort((a, 
     max-width: 320px;
     padding: 7px 10px;
     background: var(--bright);
-    color: #050505;
+    color: var(--on-bright);
     pointer-events: none;
     font: 500 var(--fs-sm)/1.4 var(--font);
   }

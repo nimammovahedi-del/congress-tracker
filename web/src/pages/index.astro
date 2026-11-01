@@ -1,10 +1,10 @@
 ---
 import Panel from "../components/Panel.astro";
-import SegBar from "../components/SegBar.astro";
 import StatusTag from "../components/StatusTag.astro";
+import TopicCard from "../components/TopicCard.astro";
 import Layout from "../layouts/Layout.astro";
 import { BILL_LIST_COLUMNS, BILL_LIST_JOIN, row, rows, stat, type BillListItem, type RollCall, type Topic } from "../lib/db";
-import { addDays, billNumber, consoleDate, formatShortDate, formatDate, CONGRESS, lastName, ordinal, partyClass, SITE_NAME } from "../lib/format";
+import { addDays, billNumber, consoleDate, formatShortDate, formatDate, lastName, partyClass, SITE_NAME } from "../lib/format";
 import { passed, voteRef } from "../lib/votes";
 
 // "This week" is the 7 days ending on the latest day with any action, so the page stays
@@ -13,8 +13,11 @@ const latest = (await row<{ d: string }>("SELECT MAX(latest_action_date) AS d FR
 const weekStart = addDays(latest, -6);
 const MOVED = "('passed_house', 'passed_senate', 'passed_both', 'presented', 'vetoed', 'agreed', 'became_law')";
 
-const [overview, moved, votes, laws, introduced, week, topics] = await Promise.all([
-  stat<{ bills: number; laws: number; votes: number; yea_total: number; nay_total: number; vote_pass_pct: number; members: number }>("overview"),
+const prevStart = addDays(latest, -13);
+// Each day's count of one kind of event over the last two weeks, for the Overview tab.
+const daily = (sql: string) => rows<{ d: string; n: number }>(sql, prevStart, latest);
+
+const [moved, votes, laws, introduced, week, topics, dIntro, dMoved, dLaws, dVotes, hot] = await Promise.all([
   rows<BillListItem>(
     `SELECT ${BILL_LIST_COLUMNS} FROM bills b ${BILL_LIST_JOIN}
       WHERE b.status IN ${MOVED} AND b.status_date >= ? ORDER BY b.status_date DESC LIMIT 8`,
@@ -33,89 +36,158 @@ const [overview, moved, votes, laws, introduced, week, topics] = await Promise.a
       WHERE b.introduced_date >= ? ORDER BY b.introduced_date DESC, b.cosponsor_count DESC LIMIT 8`,
     weekStart,
   ),
-  row<{ introduced: number; moved: number; laws: number; votes: number }>(
+  row<{ introduced: number; moved: number }>(
     `SELECT (SELECT COUNT(*) FROM bills WHERE introduced_date >= ?1) AS introduced,
-            (SELECT COUNT(*) FROM bills WHERE status IN ${MOVED} AND status_date >= ?1) AS moved,
-            (SELECT COUNT(*) FROM bills WHERE status = 'became_law' AND status_date >= ?1) AS laws,
-            (SELECT COUNT(*) FROM roll_calls WHERE vote_date >= ?1) AS votes`,
+            (SELECT COUNT(*) FROM bills WHERE status IN ${MOVED} AND status_date >= ?1) AS moved`,
     weekStart,
   ),
   stat<Topic[]>("topics"),
+  daily(`SELECT introduced_date AS d, COUNT(*) AS n FROM bills WHERE introduced_date BETWEEN ? AND ? GROUP BY 1`),
+  daily(`SELECT status_date AS d, COUNT(*) AS n FROM bills WHERE status IN ${MOVED} AND status_date BETWEEN ? AND ? GROUP BY 1`),
+  daily(`SELECT status_date AS d, COUNT(*) AS n FROM bills WHERE status = 'became_law' AND status_date BETWEEN ? AND ? GROUP BY 1`),
+  daily(`SELECT vote_date AS d, COUNT(*) AS n FROM roll_calls WHERE vote_date BETWEEN ? AND ? GROUP BY 1`),
+  // Topics with the most bills that saw any action this week.
+  rows<{ area: string; n: number }>(
+    `SELECT policy_area AS area, COUNT(*) AS n FROM bills
+      WHERE latest_action_date >= ? AND policy_area IS NOT NULL GROUP BY 1 ORDER BY 2 DESC LIMIT 8`,
+    weekStart,
+  ),
 ]);
 
-const yeaMax = Math.max(overview?.yea_total ?? 0, overview?.nay_total ?? 0, 1);
-// Open the first tab that has something in it.
-const firstTab = moved.length ? "moving" : "latest-votes";
+// Overview: this week's total for each kind of event, last week's for comparison, and one
+// bar per day of this week.
+const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+const DAY = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" });
+const series = (list: { d: string; n: number }[]) => {
+  const by = new Map(list.map((r) => [r.d, r.n]));
+  const bars = days.map((d) => by.get(d) ?? 0);
+  const prev = list.filter((r) => r.d < weekStart).reduce((t, r) => t + r.n, 0);
+  return { bars, total: bars.reduce((t, n) => t + n, 0), prev, max: Math.max(1, ...bars) };
+};
+const overview = [
+  { label: "Bills introduced", href: "#new", ...series(dIntro) },
+  { label: "Bills moved forward", href: "#moving", ...series(dMoved) },
+  { label: "Signed into law", href: "#laws", ...series(dLaws) },
+  { label: "Votes held", href: "#latest-votes", ...series(dVotes) },
+];
+const change = (now: number, before: number) => (now === before ? "Same as last week" : `${now > before ? "+" : "−"}${Math.abs(now - before)} vs last week`);
+const hotMax = Math.max(1, ...hot.map((h) => h.n));
+const slugOf = new Map((topics ?? []).map((t) => [t.area, t.slug]));
 ---
 
 <Layout title={SITE_NAME}>
   <div class="console">
     <Panel class="hero">
       <div class="panel-body hero-body">
-        <div class="hero-text">
-          <p class="label"><span data-scramble>Week of {formatShortDate(weekStart)} – {formatDate(latest)}</span></p>
-          <h1 class="cursor"><span data-scramble>This week in Congress</span></h1>
-          <p class="intro">
-            {SITE_NAME} is a free, nonpartisan record of every bill, vote, and member of the {ordinal(CONGRESS)} Congress. These numbers cover the most recent week with activity.
-            {(week?.votes ?? 0) === 0 && " There were no recorded votes that week, which can happen when Congress is on a break. The Latest votes tab below has the most recent ones."}
-          </p>
-        </div>
-        <div class="week">
-          <a class="statbox week-box" href="#new">
-            <span class="label">New bills introduced</span>
-            <span class="value" data-count={week?.introduced ?? 0}>{week?.introduced ?? 0}</span>
-            <span class="go-hint" aria-hidden="true">→</span>
-          </a>
-          <a class="statbox week-box" href="#moving">
-            <span class="label">Bills that moved forward</span>
-            <span class="value" data-count={week?.moved ?? 0}>{week?.moved ?? 0}</span>
-            <span class="go-hint" aria-hidden="true">→</span>
-          </a>
-          <a class="statbox week-box" href="#laws">
-            <span class="label">Signed into law</span>
-            <span class="value ok" data-count={week?.laws ?? 0}>{week?.laws ?? 0}</span>
-            <span class="go-hint" aria-hidden="true">→</span>
-          </a>
-          <a class="statbox week-box" href="#latest-votes">
-            <span class="label">Recorded votes</span>
-            <span class="value" data-count={week?.votes ?? 0}>{week?.votes ?? 0}</span>
-            <span class="go-hint" aria-hidden="true">→</span>
-          </a>
+        <h1 class="cursor"><span data-scramble>Follow every bill, vote, and member of Congress</span></h1>
+
+        <div class="actions">
+          <form class="act" action="/search" role="search">
+            <label class="act-label" for="home-q">Search</label>
+            <div class="cmd-line">
+              <span aria-hidden="true">&gt;</span>
+              <input id="home-q" name="q" type="search" placeholder="Bill, member, or topic" autocomplete="off" enterkeyhint="search" />
+              <button class="go" type="submit">Search</button>
+            </div>
+          </form>
+
+          <form class="act" method="post" action="/find#results">
+            <label class="act-label" for="home-addr">Find your representatives</label>
+            <div class="cmd-line">
+              <span aria-hidden="true">&gt;</span>
+              <input id="home-addr" name="address" type="text" placeholder="Your home address" autocomplete="street-address" enterkeyhint="go" required />
+              <button class="go" type="submit" data-busy="Looking up…">Find</button>
+            </div>
+            <p class="act-note"><a href="/find">Or pick your state</a></p>
+          </form>
         </div>
       </div>
     </Panel>
 
-    <Panel class="search-panel">
-      <form class="panel-body cmd" action="/search" role="search">
-        <label class="cmd-label" for="home-q">Search bills, members, and topics</label>
-        <div class="cmd-line">
-          <span aria-hidden="true">&gt;</span>
-          <input id="home-q" name="q" type="search" placeholder="Try H.R. 1 or veterans" autocomplete="off" />
-          <button class="go" type="submit">Search</button>
-        </div>
-        <ul class="quick">
-          <li><a href="/find">Find your representatives <span aria-hidden="true">→</span></a></li>
-          <li><a href="/topics">Browse bills by topic <span aria-hidden="true">→</span></a></li>
-          <li><a href="/votes">See every vote <span aria-hidden="true">→</span></a></li>
-          <li><a href="/members">All members of Congress <span aria-hidden="true">→</span></a></li>
-        </ul>
-      </form>
-    </Panel>
+    <section class="topics-wrap" aria-labelledby="topics-h">
+      <header class="sec-head">
+        <h2 id="topics-h">Browse by topic</h2>
+      </header>
+      <ul class="topic-grid">
+        {
+          (topics ?? []).slice(0, 7).map((t) => (
+            <li>
+              <TopicCard topic={t} />
+            </li>
+          ))
+        }
+        <li>
+          <a class="explore" href="/topics">
+            <span class="mosaic" aria-hidden="true">
+              {(topics ?? []).slice(7, 11).map((t) => <img src={`/topics/${t.slug}.jpg`} alt="" loading="lazy" decoding="async" />)}
+            </span>
+            <span class="explore-text">Explore all {(topics ?? []).length} topics <span aria-hidden="true">→</span></span>
+          </a>
+        </li>
+      </ul>
+    </section>
 
     <Panel class="activity">
+      <header class="act-head">
+        <h2>This week in Congress</h2>
+        <span class="label">{formatShortDate(weekStart)} – {formatDate(latest)}</span>
+      </header>
       <div data-tabs>
         <div class="tabbar">
-          <a class="tab-link" href="#moving" aria-selected={firstTab === "moving" ? "true" : undefined}>Moving forward <span class="n">{moved.length}</span></a>
-          <a class="tab-link" href="#latest-votes" aria-selected={firstTab === "latest-votes" ? "true" : undefined}>Latest votes</a>
+          <a class="tab-link" href="#overview" aria-selected="true">Overview</a>
+          <a class="tab-link" href="#hot">Hot topics</a>
+          <a class="tab-link" href="#moving">Moving forward <span class="n">{week?.moved ?? 0}</span></a>
+          <a class="tab-link" href="#latest-votes">Latest votes</a>
           <a class="tab-link" href="#laws">New laws</a>
           <a class="tab-link" href="#new">Just introduced <span class="n">{week?.introduced ?? 0}</span></a>
         </div>
 
+        <section class="tab-pane" id="overview">
+          <h3 class="visually-hidden">The week at a glance</h3>
+          <div class="ov-grid">
+            {
+              overview.map((o) => (
+                <a class="ov-card" href={o.href}>
+                  <span class="label">{o.label}</span>
+                  <span class="ov-num" data-count={o.total}>{o.total}</span>
+                  <span class:list={["ov-change", o.total > o.prev && "up", o.total < o.prev && "down"]}>{change(o.total, o.prev)}</span>
+                  <span class="ov-bars" role="img" aria-label={`${o.label} by day: ${days.map((d, i) => `${DAY.format(new Date(d))} ${o.bars[i]}`).join(", ")}`}>
+                    {o.bars.map((n, i) => (
+                      <span class="ov-day">
+                        <span class="ov-bar" style={`--h:${((n / o.max) * 100).toFixed(1)}%`} />
+                        <span class="ov-dl">{DAY.format(new Date(days[i])).slice(0, 1)}</span>
+                      </span>
+                    ))}
+                  </span>
+                </a>
+              ))
+            }
+          </div>
+        </section>
+
+        <section class="tab-pane" id="hot">
+          <h3 class="visually-hidden">Topics with the most activity this week</h3>
+          {
+            hot.length ? (
+              <ol class="hot-list">
+                {hot.map((h) => (
+                  <li>
+                    <a href={slugOf.has(h.area) ? `/topics/${slugOf.get(h.area)}` : "/topics"}>
+                      <span class="hot-name">{h.area}</span>
+                      <span class="hot-track"><span class="hot-fill" style={`--w:${((h.n / hotMax) * 100).toFixed(1)}%`} /></span>
+                      <span class="hot-n">{h.n} {h.n === 1 ? "bill" : "bills"}</span>
+                    </a>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p class="empty">No topic activity this week</p>
+            )
+          }
+        </section>
+
         <section class="tab-pane" id="moving">
-          <header class="pane-head">
-            <h2>Bills that moved forward this week</h2>
-            <p>Passed the House or Senate, went to the President, or became law.</p>
-          </header>
+          <h3 class="visually-hidden">Bills that moved forward this week</h3>
           {
             moved.length ? (
               <ol class="reclist">
@@ -136,10 +208,7 @@ const firstTab = moved.length ? "moving" : "latest-votes";
         </section>
 
         <section class="tab-pane" id="latest-votes">
-          <header class="pane-head">
-            <h2>Latest votes</h2>
-            <p>The {votes.length} most recent votes in the House and Senate where each member's vote was recorded.</p>
-          </header>
+          <h3 class="visually-hidden">Latest votes</h3>
           <ol class="reclist">
             {
               votes.map((v) => {
@@ -162,14 +231,11 @@ const firstTab = moved.length ? "moving" : "latest-votes";
               })
             }
           </ol>
-          <p class="pager"><span>Showing the {votes.length} most recent</span><a href="/votes">See all votes →</a></p>
+          <p class="pager"><a href="/votes">See all votes →</a></p>
         </section>
 
         <section class="tab-pane" id="laws">
-          <header class="pane-head">
-            <h2>Recently signed into law</h2>
-            <p>{overview?.laws ?? 0} bills have become law this Congress. These are the newest.</p>
-          </header>
+          <h3 class="visually-hidden">Recently signed into law</h3>
           <ol class="reclist">
             {
               laws.map((b) => (
@@ -186,10 +252,7 @@ const firstTab = moved.length ? "moving" : "latest-votes";
         </section>
 
         <section class="tab-pane" id="new">
-          <header class="pane-head">
-            <h2>Just introduced</h2>
-            <p>{week?.introduced ?? 0} new bills and resolutions this week. The newest, with the most cosponsors first:</p>
-          </header>
+          <h3 class="visually-hidden">Just introduced</h3>
           {
             introduced.length ? (
               <ol class="reclist">
@@ -217,259 +280,293 @@ const firstTab = moved.length ? "moving" : "latest-votes";
         </section>
       </div>
     </Panel>
-
-    <div class="cols cols-main-side">
-      <Panel label="Browse bills by topic">
-        <div class="panel-body topics">
-          {
-            (topics ?? []).slice(0, 15).map((t) => (
-              <a class="topic" href={`/topics/${t.slug}`}>
-                <span>{t.area}</span>
-                <span class="label">{t.bills.toLocaleString("en-US")}</span>
-              </a>
-            ))
-          }
-          <a class="topic all" href="/topics"><span>All topics</span><span class="label">→</span></a>
-        </div>
-      </Panel>
-
-      <Panel label="This Congress so far">
-        <div class="panel-body so-far">
-          <div class="boxes">
-            <div class="statbox"><div class="label">Bills and resolutions</div><div class="value" data-count={overview?.bills ?? 0}>{(overview?.bills ?? 0).toLocaleString("en-US")}</div></div>
-            <div class="statbox"><div class="label">Became law</div><div class="value ok" data-count={overview?.laws ?? 0}>{overview?.laws ?? 0}</div></div>
-            <div class="statbox"><div class="label">Recorded votes</div><div class="value" data-count={overview?.votes ?? 0}>{(overview?.votes ?? 0).toLocaleString("en-US")}</div></div>
-            <div class="statbox"><div class="label">Votes that passed</div><div class="value" data-count={overview?.vote_pass_pct ?? 0} data-decimals="1" data-suffix="%">{overview?.vote_pass_pct ?? 0}%</div></div>
-          </div>
-          <div class="agg">
-            <div class="agg-head">
-              <span class="label">Yes votes cast by members</span>
-              <span class="agg-num" data-count={overview?.yea_total ?? 0}>{(overview?.yea_total ?? 0).toLocaleString("en-US")}</span>
-            </div>
-            <SegBar value={overview?.yea_total ?? 0} max={yeaMax} cells={28} tone="bright" label="Total yes votes cast this Congress" />
-          </div>
-          <div class="agg">
-            <div class="agg-head">
-              <span class="label">No votes cast by members</span>
-              <span class="agg-num dimnum" data-count={overview?.nay_total ?? 0}>{(overview?.nay_total ?? 0).toLocaleString("en-US")}</span>
-            </div>
-            <SegBar value={overview?.nay_total ?? 0} max={yeaMax} cells={28} tone="dim" label="Total no votes cast this Congress" />
-          </div>
-          <a class="more" href="/analytics">See trends and charts →</a>
-        </div>
-      </Panel>
-    </div>
   </div>
 </Layout>
 
 <style>
   .console > * + * {
-    margin-top: var(--gap);
-  }
-  .hero-body {
-    display: grid;
-    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
-    align-items: end;
-    gap: 28px 48px;
-    padding: clamp(20px, 3vw, 40px);
-  }
-  h1 {
-    margin: 12px 0 18px;
-    font-size: clamp(2.4rem, 1.5rem + 3vw, 4.6rem);
-  }
-  .intro {
-    max-width: 52ch;
-    margin: 0;
-    padding: 2px 0 2px 16px;
-    border-left: 1px solid var(--line-2);
-    color: #c4c4c4;
-    font-size: 1rem;
-  }
-  .week {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-  }
-  .week-box {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    min-height: 104px;
-    padding: 16px 18px;
-    transition:
-      border-color 120ms ease,
-      background 120ms ease;
-  }
-  .week-box .value {
-    margin: auto 0 0;
-    font-size: clamp(1.8rem, 1.4rem + 1.2vw, 2.6rem);
-    font-weight: 300;
-  }
-  .go-hint {
-    position: absolute;
-    right: 16px;
-    bottom: 14px;
-    font-family: var(--mono);
-    color: var(--faint);
-    transition:
-      color 120ms ease,
-      transform 160ms var(--ease);
-  }
-  .week-box:hover {
-    border-color: var(--muted);
-    background: var(--raise);
-  }
-  .week-box:hover .go-hint {
-    color: var(--bright);
-    transform: translateX(3px);
+    margin-top: calc(var(--gap) * 1.25);
   }
 
-  /* Search sits in the dark page like the rest: an inset field with one bright button.
-     Wide screens put the label beside the field so the panel stays two rows tall. */
-  .cmd {
+  /* Hero: one headline and the two things people come for, side by side on wide screens. */
+  .hero-body {
     display: grid;
-    grid-template-areas: "label" "line" "quick";
-    gap: 12px;
-    padding: clamp(16px, 2vw, 24px);
+    gap: clamp(16px, 2.2vw, 28px);
+    padding: clamp(18px, 3vw, 36px) clamp(18px, 4vw, 48px);
   }
-  .cmd-label {
-    grid-area: label;
-    font-size: clamp(1.15rem, 1rem + 0.5vw, 1.4rem);
+  h1 {
+    max-width: 20ch;
+    margin: 0;
+    font-size: clamp(1.9rem, 1.3rem + 2.4vw, 3.5rem);
+    line-height: 1.05;
+  }
+  .actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px 28px;
+    align-items: start;
+  }
+  .act {
+    display: grid;
+    gap: 10px;
+    margin: 0;
+  }
+  .act-label {
+    font-size: clamp(1.05rem, 1rem + 0.3vw, 1.25rem);
+    font-weight: 500;
+    color: var(--bright);
+  }
+  .act-note {
+    margin: 0;
+    font-size: var(--fs-sm);
+    color: var(--muted);
+  }
+  .act-note a {
+    color: var(--soft);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .act-note a:hover {
+    color: var(--bright);
+  }
+
+  /* Section headings: a title and a "see all" link on one line. */
+  .sec-head,
+  .act-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+  }
+  .sec-head {
+    margin-bottom: 10px;
+  }
+  .act-head {
+    padding: 18px clamp(16px, 2vw, 24px);
+    border-bottom: 1px solid var(--line-2);
+  }
+  .sec-head h2,
+  .act-head h2 {
+    margin: 0;
+    font-size: clamp(1.3rem, 1.1rem + 0.7vw, 1.75rem);
     font-weight: 500;
     letter-spacing: -0.015em;
     color: var(--bright);
   }
-  /* The field itself is styled in global.css (shared with Search and Find my rep). */
-  .cmd-line {
-    grid-area: line;
-  }
-  .quick {
-    grid-area: quick;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    list-style: none;
+
+  /* Topic cards: a grayscale photo that turns to color when pointed at, with the name on a
+     dark gradient so it stays readable over any photo. */
+  .topic-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
     margin: 0;
     padding: 0;
+    list-style: none;
   }
-  .quick a {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    min-height: 40px;
-    padding: 0 14px;
-    border: 1px solid var(--line-2);
-    font: 500 0.94rem var(--font);
-    color: var(--soft);
-    transition:
-      background 120ms ease,
-      border-color 120ms ease,
-      color 120ms ease;
-  }
-  .quick a:hover {
-    background: var(--panel-2);
-    border-color: var(--muted);
-    color: var(--text);
-  }
-  @media (min-width: 900px) {
-    .cmd {
-      grid-template-columns: max-content minmax(0, 1fr);
-      grid-template-areas: "label line" "quick quick";
-      align-items: center;
-      column-gap: 24px;
-    }
+  .pager {
+    justify-content: flex-end;
   }
 
-  .topics {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
-    gap: 0 22px;
-  }
-  .topic {
+  /* The last topic card leads to the rest: a mosaic of four more topics behind a bold label. */
+  .explore {
+    position: relative;
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
-    min-height: 46px;
-    padding: 10px 8px;
-    border-bottom: 1px solid var(--line);
-    font-size: 0.94rem;
-    color: #c8c8c8;
-    transition: background 100ms ease;
+    align-items: flex-end;
+    height: 100%;
+    aspect-ratio: 16 / 10;
+    overflow: hidden;
+    border: 1px solid var(--bright);
+    background: var(--bright);
+    isolation: isolate;
   }
-  .topic:hover {
-    color: var(--bright);
-    background: var(--raise);
-    border-bottom-color: var(--muted);
-  }
-  .topic.all {
-    color: var(--bright);
-  }
-  .so-far {
-    display: grid;
-    gap: 20px;
-  }
-  .boxes {
+  .mosaic {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
+    opacity: 0.18;
+    transition: opacity 200ms ease;
   }
-  .agg-head {
+  .mosaic img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    filter: grayscale(1);
+  }
+  .explore-text {
+    padding: 16px;
+    font-size: clamp(1.1rem, 1rem + 0.5vw, 1.45rem);
+    font-weight: 600;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    color: var(--on-bright);
+  }
+  .explore-text span {
+    display: inline-block;
+    transition: transform 160ms var(--ease);
+  }
+  .explore:hover .mosaic,
+  .explore:focus-visible .mosaic {
+    opacity: 0.3;
+  }
+  .explore:hover .explore-text span,
+  .explore:focus-visible .explore-text span {
+    transform: translateX(4px);
+  }
+
+  /* Overview: four numbers, each with a bar per day of the week. */
+  .ov-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .ov-card {
     display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    gap: 12px;
-    margin-bottom: 10px;
+    flex-direction: column;
+    gap: 8px;
+    padding: clamp(16px, 2vw, 24px);
+    border-right: 1px solid var(--line);
+    transition: background 120ms ease;
   }
-  .agg-num {
-    font: 300 clamp(1.3rem, 1.1rem + 0.6vw, 1.7rem)/1 var(--mono);
-    letter-spacing: -0.02em;
+  .ov-card:last-child {
+    border-right: 0;
+  }
+  .ov-card:hover,
+  .ov-card:focus-visible {
+    background: var(--raise);
+  }
+  .ov-num {
+    font: 300 clamp(2rem, 1.6rem + 1.4vw, 3rem)/1 var(--font);
+    letter-spacing: -0.03em;
     color: var(--bright);
     font-variant-numeric: tabular-nums;
   }
-  .agg-num.dimnum {
+  .ov-change {
+    font: 400 var(--fs-sm) var(--mono);
     color: var(--muted);
   }
-  .more {
-    justify-self: start;
-    padding: 6px 0;
-    font: 500 var(--fs-sm) var(--font);
-    color: var(--bright);
+  .ov-change.up {
+    color: var(--ok);
   }
-  .more:hover {
-    text-decoration: underline;
-    text-underline-offset: 3px;
+  .ov-bars {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 5px;
+    height: 76px;
+    margin-top: 6px;
   }
-  @media (max-width: 960px) {
-    .hero-body {
+  .ov-day {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 6px;
+    min-height: 0;
+  }
+  .ov-bar {
+    height: max(2px, calc(var(--h) * 0.75));
+    background: var(--soft);
+  }
+  .ov-card:hover .ov-bar {
+    background: var(--bright);
+  }
+  .ov-dl {
+    font: 400 var(--fs-xs) var(--mono);
+    text-align: center;
+    color: var(--faint);
+  }
+  .fx:not(.calm) .ov-bar {
+    animation: grow 600ms var(--ease) both;
+    animation-delay: var(--fx-start);
+    transform-origin: bottom;
+  }
+  @keyframes grow {
+    from {
+      transform: scaleY(0);
+    }
+  }
+
+  /* Hot topics: one bar per topic, longest first. */
+  .hot-list {
+    list-style: none;
+    margin: 0;
+    padding: 8px 0;
+  }
+  .hot-list a {
+    display: grid;
+    grid-template-columns: minmax(0, 15rem) minmax(0, 1fr) 6rem;
+    align-items: center;
+    gap: 16px;
+    padding: 12px clamp(16px, 2vw, 24px);
+    transition: background 120ms ease;
+  }
+  .hot-list a:hover,
+  .hot-list a:focus-visible {
+    background: var(--raise);
+  }
+  .hot-name {
+    color: var(--text);
+  }
+  .hot-track {
+    height: 12px;
+    background: var(--track);
+  }
+  .hot-fill {
+    display: block;
+    width: var(--w);
+    height: 100%;
+    background: var(--soft);
+  }
+  .hot-list a:hover .hot-fill {
+    background: var(--bright);
+  }
+  .hot-n {
+    font: 400 var(--fs-sm) var(--mono);
+    text-align: right;
+    color: var(--muted);
+  }
+  @media (max-width: 900px) {
+    .ov-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .ov-card:nth-child(2n) {
+      border-right: 0;
+    }
+    .ov-card:nth-child(-n + 2) {
+      border-bottom: 1px solid var(--line);
+    }
+  }
+  @media (max-width: 560px) {
+    .hot-list a {
+      grid-template-columns: minmax(0, 1fr) 4.5rem;
+      gap: 6px 12px;
+    }
+    .hot-track {
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .explore-text span,
+    .mosaic {
+      transition: none;
+    }
+  }
+
+  @media (max-width: 1000px) {
+    .topic-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (max-width: 860px) {
+    .actions {
       grid-template-columns: minmax(0, 1fr);
     }
   }
-  @media (max-width: 640px) {
-    /* Phones list the eight biggest topics; "All topics" leads to the rest. */
-    .topic:nth-child(n + 9):not(.all) {
-      display: none;
-    }
-  }
   @media (max-width: 520px) {
-    .week-box {
-      min-height: 92px;
-      padding: 12px 14px;
-    }
-    /* Phones: the four shortcuts sit two by two so the search panel stays short. */
-    .quick {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-    .quick a {
-      display: flex;
-      justify-content: space-between;
-      height: 100%;
-      min-height: 44px;
-      padding: 8px 12px;
-      font-size: 0.875rem;
-      line-height: 1.3;
+    .topic-grid {
+      gap: 8px;
     }
   }
 </style>

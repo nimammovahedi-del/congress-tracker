@@ -54,6 +54,20 @@
   /* Party blue for small text: the seat-chart blue is too dark to read at label size. */
   --dem-ink: #6d8bff;
 
+  /* Surfaces and steps of gray that flip with the theme. */
+  --on-bright: #050505; /* text on a --bright fill (selected tabs, primary buttons) */
+  --field: #101010;
+  --overlay: #070707; /* menus, popovers, portrait frames */
+  --track: #181818; /* empty part of a bar */
+  --g1: #333;
+  --g2: #555;
+  --g3: #8a8a8a;
+  --scrim: 5 5 5; /* the page color as RGB, for see-through layers */
+  --tint: 255 255 255; /* hover washes: lighter on dark, darker on light */
+  --glow: 255 255 255;
+  --shadow: rgb(0 0 0 / 60%);
+  color-scheme: dark;
+
   --font: "Switzer", -apple-system, system-ui, "Helvetica Neue", Helvetica, Arial, sans-serif;
   --mono: "Reddit Mono Variable", "Reddit Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   /* Type scale. Nothing on the site is set smaller than --fs-xs (12px). Monospace
@@ -73,6 +87,46 @@
   --maxw: 1560px;
   --ease: cubic-bezier(0.22, 0.8, 0.24, 1);
   color-scheme: dark;
+}
+
+/* Light theme: warm off-white paper with near-black ink. Picked with the switch in the
+   site bar and remembered; dark stays the default. Party, pass and fail colors are
+   deepened so they keep their contrast on white. */
+:root[data-theme="light"] {
+  --bg: #f6f5f1;
+  --panel: #ffffff;
+  --panel-2: #fbfaf7;
+  --raise: #efede8;
+  --line: #e4e2dc;
+  --line-2: #d3d0c8;
+  --bracket: #a9a59b;
+  --text: #1c1c1a;
+  --bright: #050505;
+  --soft: #3a3a37;
+  --muted: #5b5a56;
+  --faint: #6a6964;
+  --dim: #dcd9d2;
+
+  --ok: #0f8a4a;
+  --alert: #d02727;
+  --warn: #946500;
+  --dem: #2f55e6;
+  --rep: #d62f2f;
+  --ind: #7546e8;
+  --dem-ink: #2f55e6;
+
+  --on-bright: #ffffff;
+  --field: #ffffff;
+  --overlay: #ffffff;
+  --track: #e6e3dc;
+  --g1: #cfccc4;
+  --g2: #9e9b94;
+  --g3: #6f6d68;
+  --scrim: 246 245 241;
+  --tint: 0 0 0;
+  --glow: 255 255 255;
+  --shadow: rgb(0 0 0 / 12%);
+  color-scheme: light;
 }
 
 *,
@@ -97,7 +151,7 @@ body {
 }
 ::selection {
   background: var(--bright);
-  color: #000;
+  color: var(--on-bright);
 }
 img {
   max-width: 100%;
@@ -107,7 +161,7 @@ img {
    broken-image icon: its picture is swapped for a blank one, keeping its size and border. */
 img.img-missing {
   content: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E");
-  background: #0c0c0c;
+  background: var(--panel-2);
 }
 a {
   color: inherit;
@@ -309,7 +363,7 @@ p {
   top: -3px;
   width: 7px;
   height: 7px;
-  background: #8a8a8a;
+  background: var(--g3);
   opacity: 0;
   pointer-events: none;
 }
@@ -341,12 +395,12 @@ p {
   border-top: 1px solid var(--line);
 }
 .panel.invert .panel-frame {
-  background: #ececec;
-  color: #050505;
-  border-color: #ececec;
+  background: var(--bright);
+  color: var(--on-bright);
+  border-color: var(--bright);
 }
 .panel.invert .label {
-  color: #555;
+  color: var(--g2);
 }
 
 /* ---------- Controls ----------
@@ -401,7 +455,7 @@ p {
 .toggle.active,
 .toggle[aria-current="page"],
 .toggle[aria-selected="true"] {
-  color: #050505;
+  color: var(--on-bright);
   border-color: var(--bright);
   background: var(--bright);
 }
@@ -424,7 +478,7 @@ p {
   padding: 10px 16px;
   border: 1px solid var(--bright);
   background: var(--bright);
-  color: #000;
+  color: var(--on-bright);
   font: 500 0.94rem/1.2 var(--font);
   letter-spacing: 0;
   text-transform: none;
@@ -515,7 +569,7 @@ button:focus-visible {
   gap: 12px;
   padding: 6px 6px 6px 18px;
   border: 1px solid var(--faint);
-  background: #101010;
+  background: var(--field);
   font: 500 1.25rem var(--mono);
   color: var(--soft);
   transition:
@@ -528,7 +582,7 @@ button:focus-visible {
 /* While typing: a white outline plus a soft ring, so the field is unmistakably active. */
 .cmd-line:focus-within {
   border-color: var(--bright);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.16);
+  box-shadow: 0 0 0 3px rgb(var(--tint) / 16%);
 }
 .cmd-line > span {
   white-space: nowrap;
@@ -554,7 +608,7 @@ button:focus-visible {
   min-height: 48px;
   border: 1px solid var(--bright);
   background: var(--bright);
-  color: #050505;
+  color: var(--on-bright);
   font: 500 1rem var(--font);
   padding: 12px 26px;
   cursor: pointer;
@@ -979,7 +1033,7 @@ a.tag:hover,
 /* Reading text: a comfortable line length and spacing. */
 .prose {
   max-width: 70ch;
-  color: #d4d4d4;
+  color: var(--soft);
   line-height: 1.65;
 }
 .prose ul {
@@ -1097,7 +1151,7 @@ details > summary:hover {
   background: var(--raise);
 }
 .tab-link[aria-selected="true"] {
-  color: #050505;
+  color: var(--on-bright);
   background: var(--bright);
 }
 /* Keyboard focus draws inside the tab (the tab bar clips anything outside it), dark on the
@@ -1107,7 +1161,7 @@ details > summary:hover {
   outline-offset: -5px;
 }
 .tab-link[aria-selected="true"]:focus-visible {
-  outline-color: #050505;
+  outline-color: var(--on-bright);
 }
 .tab-link .n {
   padding: 2px 6px;
@@ -1285,6 +1339,29 @@ details > summary:hover {
   }
 }
 
+/* Moving between pages: where the browser supports cross-page view transitions, the site
+   bar is carried over untouched (so it never blinks while the next page loads) and only
+   the page below it cross-fades. The quick panel fade-in would double that fade, so it's off
+   there. */
+@view-transition {
+  navigation: auto;
+}
+.site-bar {
+  view-transition-name: site-bar;
+}
+::view-transition-group(site-bar) {
+  animation: none;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 160ms;
+}
+@supports (view-transition-name: none) {
+  .fx.calm .panel-frame {
+    animation: none;
+  }
+}
+
 /* Leaving: the page dims and a loading line runs under the site bar until the next page
    paints (the browser keeps showing this one until then). */
 .leaving main {
@@ -1312,6 +1389,11 @@ details > summary:hover {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
   .fx .panel-frame,
   .fx .panel::after,
   .fx .tab-pane.pane-in {

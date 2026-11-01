@@ -2,7 +2,6 @@
 import Panel from "../../components/Panel.astro";
 import TallyBar from "../../components/TallyBar.astro";
 import Term from "../../components/Term.astro";
-import Terminal from "../../components/Terminal.astro";
 import VoteVisualizer from "../../components/VoteVisualizer.astro";
 import Layout from "../../layouts/Layout.astro";
 import { memberStats, memberVotes, row, rows, type RollCall } from "../../lib/db";
@@ -29,7 +28,6 @@ const [votes, stats, bill, session] = await Promise.all([
 const chamberName = r.chamber === "senate" ? "Senate" : "House";
 const t = threshold(r);
 const ok = passed(r);
-const diff = r.yea - r.nay;
 const passMargin = r.yea - t.needed;
 const maxSide = Math.max(1, ...session.map((s) => Math.max(s.yea, s.nay)));
 const W = 1000;
@@ -38,13 +36,6 @@ const step = W / Math.max(session.length, 1);
 const year = 1789 + 2 * (r.congress - 1) + (r.session - 1);
 const rule = ruleInfo(t);
 const explained = explainQuestion(r.question, r.subject_ref?.startsWith("PN"));
-// The log under the chart: how to read it and where the record comes from (the vote's number
-// and date are already in the title above).
-const lines = [
-  { text: `${votes.length} members shown in their seats, grouped by party` },
-  { text: r.source === "voteview" ? "Source: Voteview (UCLA), from the Senate's record" : "Source: Office of the Clerk of the House", tone: "bright" as const },
-  { text: "Each dot is one member: filled voted yes, hollow voted no", tone: "ok" as const },
-];
 ---
 
 <Layout title={`${chamberName} vote ${r.roll_number}: ${bill?.title ?? r.description ?? r.question ?? ""}`} crumbs={[{ label: "Votes", href: "/votes" }, { label: `${chamberName} vote ${r.roll_number}` }]}>
@@ -52,7 +43,7 @@ const lines = [
     <Panel class="strip-panel" plain>
       <div class="strip-head label">
         <span>Every {chamberName} vote in {year} · {session.length} in all</span>
-        <span class="strip-hint">Yes votes above the line, no votes below. Click a bar to open that vote.</span>
+        <span class="strip-hint">Yes above the line, no below</span>
       </div>
       <svg class="strip" viewBox={`0 0 ${W} 64`} preserveAspectRatio="none" role="group" aria-label={`Yes and no totals of every ${chamberName} vote in ${year}. Use the arrow keys to move between votes.`}>
         {
@@ -97,7 +88,6 @@ const lines = [
                   <div><span>Fell short by</span><span class="alert">{-passMargin} {passMargin === -1 ? "vote" : "votes"}</span></div>
                 )
               }
-              <div><span>Yes minus no</span><span>{diff === 0 ? "Tied" : `${diff > 0 ? "+" : ""}${diff}`}</span></div>
             </div>
             {passMargin < 0 && ok === true && <p class="note tie-note">Officially passed. Tie-breaking votes by the Vice President aren't part of member tallies.</p>}
           </div>
@@ -132,9 +122,7 @@ const lines = [
       {/* The log sits under the chart it narrates (in the Seat chart view), which also keeps the
           left column about as long as the chart beside it instead of running far past it. */}
       <Panel class="viz-panel">
-        <VoteVisualizer rollCall={r} votes={votes} seats={seatInfo(votes, stats)} billTitle={bill?.title ?? r.description}>
-          <Terminal slot="log" lines={lines} delay={400} />
-        </VoteVisualizer>
+        <VoteVisualizer rollCall={r} votes={votes} seats={seatInfo(votes, stats)} billTitle={bill?.title ?? r.description} />
       </Panel>
     </div>
   </div>
@@ -180,10 +168,10 @@ const lines = [
     height: 64px;
   }
   .strip rect.up {
-    fill: #5d5d5d;
+    fill: var(--g2);
   }
   .strip rect.down {
-    fill: #333;
+    fill: var(--g1);
   }
   /* Each vote's whole column (not just its thin bars) answers the pointer. */
   .strip rect.hit {
@@ -191,15 +179,15 @@ const lines = [
   }
   .strip a:hover rect.hit,
   .strip a:focus-visible rect.hit {
-    fill: rgb(255 255 255 / 10%);
+    fill: rgb(var(--tint) / 10%);
   }
   .strip a:hover rect.up,
   .strip a:focus-visible rect.up {
-    fill: #bdbdbd;
+    fill: var(--soft);
   }
   .strip a:hover rect.down,
   .strip a:focus-visible rect.down {
-    fill: #777;
+    fill: var(--g3);
   }
   .strip a:focus {
     outline: none;
@@ -209,7 +197,7 @@ const lines = [
     outline-offset: 3px;
   }
   .strip a.here rect:not(.hit) {
-    fill: #fff;
+    fill: var(--bright);
   }
   :global(.fx) .strip rect:not(.hit) {
     animation: bar-in calc(260ms * var(--fx-pace)) ease both;
@@ -237,7 +225,7 @@ const lines = [
     margin-bottom: 0;
   }
   .dimbig {
-    color: #8a8a8a;
+    color: var(--muted);
   }
   .sq-w,
   .sq-d {
@@ -248,7 +236,7 @@ const lines = [
     background: var(--bright);
   }
   .sq-d {
-    background: #555;
+    background: var(--g2);
   }
   .tie-note {
     margin: 12px 0 0;

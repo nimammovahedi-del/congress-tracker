@@ -27,20 +27,20 @@ const partial = exact - lit > 0.25 && lit < cells;
   }
   i {
     height: var(--h);
-    background: #181818;
+    background: var(--track);
   }
   .bright i.on {
-    background: #f5f5f5;
-    box-shadow: 0 0 9px rgb(255 255 255 / 45%);
+    background: var(--bright);
+    box-shadow: 0 0 9px rgb(var(--glow) / 45%);
   }
   .bright i.part {
-    background: #8a8a8a;
+    background: var(--g3);
   }
   .dim i.on {
-    background: #555;
+    background: var(--g2);
   }
   .dim i.part {
-    background: #333;
+    background: var(--g1);
   }
   .dem i.on {
     background: var(--dem);
@@ -67,7 +67,7 @@ const partial = exact - lit > 0.25 && lit < cells;
   .ind i.part,
   .ok i.part,
   .alert i.part {
-    background: #3a3a3a;
+    background: var(--g1);
   }
   :global(.fx) i.on,
   :global(.fx) i.part {
@@ -76,7 +76,7 @@ const partial = exact - lit > 0.25 && lit < cells;
   }
   @keyframes cell {
     from {
-      background: #181818;
+      background: var(--track);
       box-shadow: none;
     }
   }

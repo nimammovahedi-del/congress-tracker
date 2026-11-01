@@ -1,165 +1,53 @@
 ---
 import Panel from "../../components/Panel.astro";
-import SegBar from "../../components/SegBar.astro";
+import TopicCard from "../../components/TopicCard.astro";
 import Layout from "../../layouts/Layout.astro";
 import { stat, type Topic } from "../../lib/db";
 
 const topics = (await stat<Topic[]>("topics")) ?? [];
-const largest = Math.max(1, ...topics.map((t) => t.bills));
-const total = topics.reduce((n, t) => n + t.bills, 0);
 ---
 
 <Layout title="Topics" crumbs={[{ label: "Topics" }]}>
   <div class="console">
     <Panel>
       <div class="panel-body head">
-        <p class="label"><span data-scramble>{topics.length} policy areas</span></p>
-        <h1 class="cursor"><span data-scramble>Browse by topic</span></h1>
-        <p class="intro">
-          The Congressional Research Service files every bill under one policy area. Pick one to see its bills, newest first, and narrow them by subtopic. {total.toLocaleString("en-US")} bills and resolutions in all.
-        </p>
+        <h1 class="cursor"><span data-scramble>Browse bills by topic</span></h1>
+        <p class="intro">Every bill is filed under one of these {topics.length} areas.</p>
       </div>
     </Panel>
 
-    <div class="grid">
+    <ul class="grid">
       {
-        topics.map((t, i) => (
-          <a class="tile panel" href={`/topics/${t.slug}`} style={`--i:${Math.min(i, 8)}`}>
-            <div class="panel-frame">
-              <div class="tile-head">
-                <span class="label">{t.laws} became law</span>
-                <span class="tile-go" aria-hidden="true">See bills →</span>
-              </div>
-              <h2>{t.area}</h2>
-              <div class="tile-num">
-                <span class="num-big" data-count={t.bills}>{t.bills.toLocaleString("en-US")}</span>
-                <span class="label">bills</span>
-              </div>
-              <SegBar value={t.bills} max={largest} cells={24} height={6} tone="bright" />
-              <ul>
-                {t.subjects.slice(0, 3).map((s) => (
-                  <li>{s.name}</li>
-                ))}
-              </ul>
-            </div>
-          </a>
+        topics.map((t) => (
+          <li>
+            <TopicCard topic={t} laws />
+          </li>
         ))
       }
-    </div>
+    </ul>
   </div>
 </Layout>
 
 <style>
   .head h1 {
-    margin: 10px 0 14px;
+    margin: 0 0 10px;
   }
   .intro {
-    max-width: 62ch;
-    padding-left: 16px;
-    border-left: 1px solid var(--line-2);
-    color: #bdbdbd;
+    margin: 0;
+    color: var(--soft);
   }
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
-    gap: var(--gap);
-    margin-top: var(--gap);
-  }
-  .tile .panel-frame {
-    display: flex;
-    flex-direction: column;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
     gap: 12px;
-    padding: 16px 18px 18px;
-    transition:
-      border-color 140ms ease,
-      background 140ms ease;
-  }
-  .tile:hover .panel-frame {
-    border-color: var(--muted);
-    background: var(--raise);
-  }
-  /* A quiet cue that the whole tile is a link; it brightens with the tile. */
-  .tile-go {
-    font: 500 var(--fs-sm)/1.45 var(--font);
-    color: var(--muted);
-    white-space: nowrap;
-    transition: color 120ms ease;
-  }
-  .tile:hover .tile-go {
-    color: var(--bright);
-  }
-  .tile:hover {
-    color: inherit;
-  }
-  .tile-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: 12px;
-  }
-  h2 {
-    font-size: 1.3rem;
-    margin: 4px 0 0;
-    min-height: 2.4em;
-  }
-  .tile-num {
-    display: flex;
-    align-items: baseline;
-    gap: 10px;
-  }
-  .num-big {
-    font: 300 2.4rem/1 var(--font);
-    letter-spacing: -0.04em;
-    color: var(--bright);
-  }
-  ul {
-    list-style: none;
-    margin: 4px 0 0;
+    margin: var(--gap) 0 0;
     padding: 0;
-    font: 400 var(--fs-sm)/1.45 var(--font);
-    color: var(--muted);
+    list-style: none;
   }
-  li + li {
-    margin-top: 4px;
-  }
-  .tile:hover li {
-    color: var(--soft);
-  }
-  /* Phones: a compact row per policy area (name and count, the bar, then how many became
-     law), so 31 areas fit in a few screens instead of one tall card each. */
-  @media (max-width: 640px) {
+  @media (max-width: 520px) {
     .grid {
-      gap: 12px;
-    }
-    .tile .panel-frame {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      grid-template-areas: "title num" "bar bar" "head head";
-      align-items: baseline;
-      gap: 10px 14px;
-      padding: 14px 16px;
-    }
-    .tile h2 {
-      grid-area: title;
-      min-height: 0;
-      margin: 0;
-      font-size: 1.15rem;
-    }
-    .tile-num {
-      grid-area: num;
-      gap: 6px;
-    }
-    .num-big {
-      font-size: 1.6rem;
-    }
-    .tile .panel-frame > :global(.segbar) {
-      grid-area: bar;
-    }
-    .tile-head {
-      grid-area: head;
-    }
-    .tile ul {
-      display: none;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
     }
   }
 </style>

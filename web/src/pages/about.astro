@@ -1,99 +1,296 @@
 ---
-import Panel from "../components/Panel.astro";
 import Layout from "../layouts/Layout.astro";
-import { lastSync } from "../lib/db";
-import { ago, SITE_NAME } from "../lib/format";
+import { lastSync, stat } from "../lib/db";
+import { ago, ordinal, CONGRESS, SITE_NAME } from "../lib/format";
 
-const synced = await lastSync();
+const [synced, overview] = await Promise.all([lastSync(), stat<{ bills: number; laws: number; votes: number; members: number }>("overview")]);
+const bills = overview?.bills ?? 0;
+const laws = overview?.laws ?? 0;
+const votes = overview?.votes ?? 0;
+const pct = bills ? (laws / bills) * 100 : 0;
+// One square per 1% of bills: the lit squares are the share that became law.
+const lit = Math.max(1, Math.round(pct));
+const fmt = (n: number) => n.toLocaleString("en-US");
 ---
 
-<Layout title="About the data" crumbs={[{ label: "About the data" }]}>
-  <div class="console">
-    <Panel>
-      <div class="panel-body head">
-        <p class="label"><span data-scramble>How this site works</span></p>
-        <h1 class="cursor"><span data-scramble>About the data</span></h1>
-        <p class="intro">
-          {SITE_NAME} is a free, independent tracker of the U.S. Congress. It isn't affiliated with Congress or any government agency. Data refreshes every hour; the last refresh was {ago(synced)}.
-        </p>
-      </div>
-    </Panel>
+<Layout title="About" crumbs={[{ label: "About" }]}>
+  <article class="story">
+    <header class="intro">
+      <p class="kicker label">Why {SITE_NAME} exists</p>
+      <h1>Congress works for you.<br /><span class="soft">You should be able to check.</span></h1>
+    </header>
 
-    <div class="docs">
-      <Panel label="Sources">
-        <div class="panel-body prose">
-          <ul>
-            <li><strong>Bills and resolutions:</strong> Congress.gov data via GovInfo's bill status files (public domain): status, actions, sponsors, cosponsors, subjects, committees, and CRS summaries.</li>
-            <li><strong>House votes:</strong> Office of the Clerk, U.S. House of Representatives.</li>
-            <li><strong>Senate votes and DW-NOMINATE scores:</strong> Lewis, Jeffrey B., Keith Poole, Howard Rosenthal, Adam Boche, Aaron Rudkin, and Luke Sonnet. <em>Voteview: Congressional Roll-Call Votes Database.</em> <a class="link" href="https://voteview.com/" rel="noopener">voteview.com</a>. Senate member-level votes can trail the Senate by up to a month.</li>
-            <li><strong>Members, contact details, and portraits:</strong> the @unitedstates project's congress-legislators data and official member photos (public domain).</li>
-            <li><strong>Regulations and executive orders:</strong> the Federal Register API.</li>
-            <li><strong>District lookup:</strong> the U.S. Census Bureau geocoder.</li>
-          </ul>
+    <section class="chapter reveal" aria-labelledby="c1">
+      <p class="step label">01 · The problem</p>
+      <h2 id="c1">A lot happens. Very little of it is easy to see.</h2>
+      <div class="stats">
+        <div class="stat">
+          <span class="big">{fmt(bills)}</span>
+          <span>bills introduced in the {ordinal(CONGRESS)} Congress</span>
         </div>
-      </Panel>
-
-      <Panel label="Method">
-        <div class="panel-body prose">
-          <ul>
-            <li><strong>Status</strong> comes from each bill's official action codes: introduced, reported by committee, passed one chamber, passed both, sent to the President, vetoed, or became law. Resolutions are "agreed to" when adopted.</li>
-            <li><strong>Votes with party</strong> uses the standard party-unity measure: on votes where most Democrats and most Republicans voted opposite ways, how often a member sided with their party. Independents are counted with Democrats, with whom both current Independents caucus.</li>
-            <li><strong>Votes needed to pass</strong> follow each vote's rule: a simple majority; two-thirds for House "suspension" votes (a fast track for bills with broad support) and veto overrides; or 60 senators for cloture (ending debate).</li>
-            <li><strong>Vice-presidential tie-breakers</strong> aren't part of member-level vote records; the official result is shown with each tally.</li>
-            <li><strong>Summaries</strong> are written by the nonpartisan Congressional Research Service. Some bills also have a plain-English overview written by AI from the bill text; it's always labelled as AI-written and kept apart from the official summary.</li>
-          </ul>
+        <div class="stat">
+          <span class="big">{fmt(votes)}</span>
+          <span>recorded votes, each one a name and a yes or no</span>
         </div>
-      </Panel>
-
-      <div class="stack aside">
-        <Panel label="Privacy">
-          <div class="panel-body prose">
-            <p>There are no accounts, ads, or trackers. Addresses entered on <a class="link" href="/find">Find my rep</a> are sent only to the Census Bureau's geocoder to find your district, and aren't stored or logged.</p>
-          </div>
-        </Panel>
-
-        <Panel label="Credits">
-          <div class="panel-body prose">
-            <p>Typefaces: Switzer by Indian Type Foundry (ITF Free Font License) and Reddit Mono (SIL Open Font License). Interface inspired by the console aesthetic of data-monitoring tools.</p>
-          </div>
-        </Panel>
+        <div class="stat">
+          <span class="big ok">{fmt(laws)}</span>
+          <span>became law</span>
+        </div>
       </div>
-    </div>
-  </div>
+      <figure class="odds">
+        <div class="dots" role="img" aria-label={`${pct.toFixed(1)} percent of bills became law`}>
+          {Array.from({ length: 100 }, (_, i) => <i class={i < lit ? "on" : undefined} />)}
+        </div>
+        <figcaption><strong>{pct < 1 ? "Fewer than 1 in 100" : `About ${Math.round(pct)} in 100`}</strong> bills becomes law. The rest stall quietly, and that's where most of the story is.</figcaption>
+      </figure>
+    </section>
+
+
+    <section class="chapter reveal" aria-labelledby="c3">
+      <p class="step label">02 · Our promises</p>
+      <h2 id="c3" class="visually-hidden">Our promises</h2>
+      <ul class="promises">
+        <li><strong>Free.</strong><span>For everyone, always.</span></li>
+        <li><strong>Nonpartisan.</strong><span>No side, no spin. Just the record.</span></li>
+        <li><strong>No ads.</strong><span>Nothing to sell you.</span></li>
+        <li><strong>No tracking.</strong><span>No accounts, no cookies. Addresses go only to the Census Bureau to find your district.</span></li>
+        <li><strong>Public data.</strong><span>Straight from official sources, refreshed every hour.</span></li>
+      </ul>
+    </section>
+
+    <section class="chapter reveal sources" id="sources" aria-labelledby="c4">
+      <p class="step label">03 · Where the data comes from</p>
+      <h2 id="c4">Official records, refreshed hourly</h2>
+      <ul class="src-list">
+        <li><strong>Congress.gov &amp; GovInfo</strong><span>Bills, actions, sponsors, summaries</span></li>
+        <li><strong>House Clerk</strong><span>House votes</span></li>
+        <li><strong>Voteview (UCLA)</strong><span>Senate votes and voting-pattern scores</span></li>
+        <li><strong>@unitedstates project</strong><span>Members, contacts, photos</span></li>
+        <li><strong>Federal Register</strong><span>Regulations and executive orders</span></li>
+        <li><strong>U.S. Census Bureau</strong><span>District lookup</span></li>
+      </ul>
+      <details class="method">
+        <summary>How the numbers work</summary>
+        <ul>
+          <li><strong>Status</strong> comes from each bill's official action codes, from introduced through law or veto.</li>
+          <li><strong>Votes with party</strong> is how often a member sided with their party on votes where most Democrats and most Republicans split. Independents count with Democrats, with whom they caucus.</li>
+          <li><strong>Votes needed to pass</strong> follows each vote's rule: a simple majority, two-thirds for suspension votes and veto overrides, or 60 senators for cloture.</li>
+          <li><strong>Senate member votes</strong> can trail the Senate by up to a month. Vice-presidential tie-breakers aren't in member records; the official result is shown.</li>
+          <li><strong>Summaries</strong> come from the nonpartisan Congressional Research Service. Some bills also get a plain-English overview written by AI, always labelled as such.</li>
+          <li>Senate votes cite Lewis, Poole, Rosenthal, Boche, Rudkin and Sonnet, <em>Voteview: Congressional Roll-Call Votes Database</em>, <a class="link" href="https://voteview.com/" rel="noopener">voteview.com</a>.</li>
+        </ul>
+      </details>
+      <p class="fine">Not affiliated with Congress or any government agency. Last refresh {ago(synced)}.</p>
+    </section>
+  </article>
 </Layout>
 
 <style>
-  .head h1 {
-    margin: 10px 0 14px;
+  .story {
+    max-width: 1040px;
+    margin: 0 auto;
   }
   .intro {
-    max-width: 66ch;
-    padding-left: 16px;
-    border-left: 1px solid var(--line-2);
-    color: #bdbdbd;
+    padding: clamp(40px, 8vw, 110px) 0 clamp(30px, 6vw, 70px);
   }
-  /* Sources and Method side by side, with the two short notes stacked in a third column;
-     on tablets the short notes run across underneath, and on phones everything stacks. */
-  .docs {
+  .kicker {
+    margin: 0 0 18px;
+  }
+  h1 {
+    margin: 0;
+    font-size: clamp(2.4rem, 1.4rem + 4.4vw, 5.4rem);
+    line-height: 1;
+    letter-spacing: -0.035em;
+    font-weight: 500;
+    color: var(--bright);
+  }
+  .soft {
+    color: var(--muted);
+  }
+  .chapter {
+    padding: clamp(40px, 7vw, 90px) 0;
+    border-top: 1px solid var(--line-2);
+  }
+  .step {
+    margin: 0 0 14px;
+  }
+  h2 {
+    max-width: 24ch;
+    margin: 0 0 clamp(26px, 4vw, 44px);
+    font-size: clamp(1.7rem, 1.2rem + 2vw, 2.9rem);
+    line-height: 1.08;
+    letter-spacing: -0.025em;
+    font-weight: 500;
+    color: var(--bright);
+  }
+
+  /* 01: three big numbers, then a hundred squares with the share that became law lit. */
+  .stats {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: var(--gap);
-    align-items: start;
-    margin-top: var(--gap);
+    gap: 12px;
   }
-  @media (max-width: 1100px) {
-    .docs {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-    .aside {
-      grid-column: 1 / -1;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 22px;
+    border: 1px solid var(--line-2);
+    background: var(--panel);
+    color: var(--soft);
+  }
+  .big {
+    font: 300 clamp(2.4rem, 1.8rem + 2.4vw, 4rem)/1 var(--font);
+    letter-spacing: -0.04em;
+    color: var(--bright);
+    font-variant-numeric: tabular-nums;
+  }
+  .big.ok {
+    color: var(--ok);
+  }
+  .odds {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: clamp(20px, 4vw, 48px);
+    margin: clamp(26px, 4vw, 40px) 0 0;
+  }
+  .dots {
+    display: grid;
+    grid-template-columns: repeat(10, 14px);
+    gap: 5px;
+  }
+  .dots i {
+    width: 14px;
+    height: 14px;
+    background: var(--g1);
+  }
+  .dots i.on {
+    background: var(--ok);
+    box-shadow: 0 0 10px rgb(61 220 132 / 50%);
+  }
+  .odds figcaption {
+    max-width: 34ch;
+    font-size: clamp(1.1rem, 1rem + 0.5vw, 1.4rem);
+    line-height: 1.4;
+    color: var(--soft);
+  }
+  .odds strong {
+    font-weight: 500;
+    color: var(--bright);
+  }
+
+  /* 02: promises as big statements. */
+  .promises {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .promises li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: baseline;
+    gap: 8px 32px;
+    padding: 18px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .promises strong {
+    font-size: clamp(2rem, 1.3rem + 3vw, 4rem);
+    font-weight: 500;
+    line-height: 1;
+    letter-spacing: -0.035em;
+    color: var(--bright);
+  }
+  .promises span {
+    color: var(--soft);
+    font-size: 1.05rem;
+  }
+
+  /* 03: sources as a compact grid; the method sits behind a disclosure. */
+  .src-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .src-list li {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 16px 18px;
+    border: 1px solid var(--line-2);
+    background: var(--panel);
+  }
+  .src-list strong {
+    font-weight: 500;
+    color: var(--bright);
+  }
+  .src-list span {
+    font-size: var(--fs-sm);
+    color: var(--muted);
+  }
+  .method {
+    margin-top: 20px;
+    border: 1px solid var(--line-2);
+  }
+  .method summary {
+    padding: 14px 18px;
+    cursor: pointer;
+    font-weight: 500;
+    color: var(--text);
+  }
+  .method ul {
+    margin: 0;
+    padding: 4px 18px 18px 36px;
+    display: grid;
+    gap: 10px;
+    max-width: 75ch;
+    color: var(--soft);
+    line-height: 1.6;
+  }
+  .method strong {
+    font-weight: 500;
+    color: var(--bright);
+  }
+  .fine {
+    margin: 22px 0 0;
+    font-size: var(--fs-sm);
+    color: var(--muted);
+  }
+
+  /* Each chapter rises into place as it scrolls into view, where the browser supports it. */
+  @supports (animation-timeline: view()) {
+    :global(.fx) .reveal {
+      animation: rise linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 60%;
     }
   }
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(40px);
+    }
+  }
+
   @media (max-width: 760px) {
-    .docs,
-    .aside {
+    .stats,
+    .src-list,
+    .odds,
+    .promises li {
       grid-template-columns: minmax(0, 1fr);
+    }
+  }
+  @media (max-width: 380px) {
+    .dots {
+      grid-template-columns: repeat(10, 11px);
+      gap: 4px;
+    }
+    .dots i {
+      width: 11px;
+      height: 11px;
     }
   }
 </style>
