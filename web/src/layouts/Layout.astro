@@ -31,6 +31,9 @@ const query = path === "/search" ? (Astro.url.searchParams.get("q") ?? "").slice
     <title>{title === SITE_NAME ? title : `${title} · ${SITE_NAME}`}</title>
     <meta name="description" content={description} />
     <meta name="theme-color" content="#050505" />
+    <link rel="canonical" href={`https://checkcongress.com${Astro.url.pathname}`} />
+    <meta property="og:site_name" content={SITE_NAME} />
+    <meta property="og:url" content={`https://checkcongress.com${Astro.url.pathname}`} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />

@@ -1,4 +1,4 @@
-// Cloudflare settings for the website (a Worker in the CongressZ account).
+// Cloudflare settings for the Check Congress website (a Worker in the CongressZ account).
 // It reads the same D1 database the data pipeline uploads to.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
@@ -14,5 +14,10 @@
       "database_id": "cc4ee772-0ebd-4a46-b7bb-0098070dedc0"
     }
   ],
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
+  // The public address. www and the old workers.dev address redirect here (src/middleware.ts).
+  "routes": [
+    { "pattern": "checkcongress.com", "custom_domain": true },
+    { "pattern": "www.checkcongress.com", "custom_domain": true }
+  ]
 }

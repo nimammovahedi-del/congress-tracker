@@ -1,6 +1,6 @@
 // Display helpers shared by every page.
 
-export const SITE_NAME = "Congress Tracker"; // working name
+export const SITE_NAME = "Check Congress";
 export const CONGRESS = 119;
 
 const BILL_TYPE_LABELS: Record<string, string> = {
