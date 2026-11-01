@@ -15,7 +15,9 @@
     }
   ],
   "observability": { "enabled": true },
-  // The public address. www and the old workers.dev address redirect here (src/middleware.ts).
+  // The public address. www and the old workers.dev address (kept on so shared links work)
+  // redirect here (src/middleware.ts).
+  "workers_dev": true,
   "routes": [
     { "pattern": "checkcongress.com", "custom_domain": true },
     { "pattern": "www.checkcongress.com", "custom_domain": true }
