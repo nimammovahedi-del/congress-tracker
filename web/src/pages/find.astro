@@ -160,7 +160,7 @@ const seatLabel = (r: Rep) => (r.chamber === "senate" ? (byName ? `Senator · ${
                 return (
                   <Panel label={seatLabel(r)} class={g.list.length > FOLD + 2 && i >= FOLD ? "more" : undefined}>
                     <a class="panel-body node" href={`/members/${r.bioguide_id}`}>
-                      <span class="vf">{r.photo_url && <img src={r.photo_url} alt="" loading="lazy" />}<span class="cross" /></span>
+                      <span class="vf">{r.photo_url && <img src={r.photo_url} alt="" loading="lazy" />}</span>
                       <span class="info">
                         <span class="nname">{r.full_name}</span>
                         <span class={`party ${partyClass(p)}`}>{PARTY[p]?.name ?? p}</span>
@@ -304,16 +304,6 @@ const seatLabel = (r: Rep) => (r.chamber === "senate" ? (byName ? `Senator · ${
   }
   .node:hover .vf img {
     filter: none;
-  }
-  .cross {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: 22px;
-    height: 22px;
-    margin: -11px 0 0 -11px;
-    border: 1px solid rgb(var(--tint) / 35%);
-    border-radius: 50%;
   }
   .info {
     display: flex;

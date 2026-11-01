@@ -59,7 +59,6 @@ const stateName = m.state ? (STATES[m.state] ?? m.state) : null;
           <div class="panel-body">
             <div class="viewfinder">
               {m.photo_url && <img src={m.photo_url} alt={`Official portrait of ${m.full_name}`} />}
-              <span class="cross" aria-hidden="true"></span>
               <span class="label corner">{m.in_office ? "Serving now" : "No longer serving"}</span>
             </div>
           </div>
@@ -254,16 +253,6 @@ const stateName = m.state ? (STATES[m.state] ?? m.state) : null;
       clip-path: inset(0 0 100% 0);
       filter: grayscale(1) brightness(1.8);
     }
-  }
-  .cross {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: 30px;
-    height: 30px;
-    margin: -15px 0 0 -15px;
-    border: 1px solid rgb(var(--tint) / 35%);
-    border-radius: 50%;
   }
   .corner {
     position: absolute;

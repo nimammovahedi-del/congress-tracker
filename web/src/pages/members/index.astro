@@ -119,7 +119,6 @@ const inspect = Object.fromEntries(
         <div class="panel-body">
           <div class="viewfinder">
             <img alt="" hidden data-k="ph" />
-            <span class="cross" aria-hidden="true"></span>
             <span class="label nosignal" data-k="signal">No one selected</span>
           </div>
           <p class="name" data-k="n">Point at a member to preview</p>
@@ -386,16 +385,6 @@ const inspect = Object.fromEntries(
     from {
       opacity: 0.15;
     }
-  }
-  .cross {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: 26px;
-    height: 26px;
-    margin: -13px 0 0 -13px;
-    border: 1px solid var(--faint);
-    border-radius: 50%;
   }
   .nosignal {
     position: absolute;
