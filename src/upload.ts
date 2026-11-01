@@ -4,9 +4,9 @@
 //   npm run upload
 //
 // Settings (environment variables):
-//   D1_DAILY_WRITE_BUDGET  rows written per day, default 45000 (Cloudflare's free plan
-//                          allows 100,000 per account per day; the rest stays free for
-//                          other projects on the same account)
+//   D1_DAILY_WRITE_BUDGET  rows written per day, default 95000 (Cloudflare's free plan
+//                          allows 100,000 per account per day; the last 5,000 are kept
+//                          back so a slightly high count never hits the hard limit)
 //   D1_RUN_LIMIT           optional cap for a single run, e.g. for testing
 //
 // The budget is spread across the day so later hourly runs still have room for fresh
@@ -20,7 +20,7 @@ import { all, getState, one, openDb, setState, transaction, upsert } from "./db.
 import { ADDED_COLUMNS, columnMigrations } from "./migrations.ts";
 import { changedTables, estimateRows, loadUnits, unitSql, type Unit } from "./units.ts";
 
-const DAILY_BUDGET = Number(process.env.D1_DAILY_WRITE_BUDGET ?? 45_000);
+const DAILY_BUDGET = Number(process.env.D1_DAILY_WRITE_BUDGET ?? 95_000);
 const RUN_LIMIT = Number(process.env.D1_RUN_LIMIT ?? Infinity);
 const BATCH_ROWS = 4_000; // estimated rows per uploaded file
 const BATCH_BYTES = 4_000_000;

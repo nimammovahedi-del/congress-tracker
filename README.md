@@ -69,10 +69,10 @@ be started by hand from the repo's **Actions** tab. It needs two repository secr
 `CLOUDFLARE_ACCOUNT_ID`.
 
 Cloudflare's free plan allows 100,000 database row writes per day per account. The upload
-spends at most `D1_DAILY_WRITE_BUDGET` (default 45,000), spread evenly over the day, and
-resends only the parts of a bill, vote, or member that changed. The first full upload
-(about 1.5–1.7 million writes) therefore trickles in over roughly five weeks, newest data
-first. Each run's log ends with how much is left and how many days that will take.
+spends at most `D1_DAILY_WRITE_BUDGET` (default 95,000, keeping 5,000 in reserve), spread
+evenly over the day, and resends only the parts of a bill, vote, or member that changed.
+The first full upload (about 1.5–1.7 million writes) therefore trickles in over two to
+three weeks, newest data first. Each run's log ends with how much is left and how many days that will take.
 
 Requires Node.js 24 or newer (it runs TypeScript directly and has SQLite built in).
 
