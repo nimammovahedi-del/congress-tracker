@@ -53,13 +53,15 @@ const query = path === "/search" ? (Astro.url.searchParams.get("q") ?? "").slice
     <link rel="preload" href="/fonts/switzer-300.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/switzer-500.woff2" as="font" type="font/woff2" crossorigin />
     <script is:inline>
-      // The theme, set before the first paint so a light page never flashes dark. Dark is the
-      // default; the switch in the site bar saves a choice of light.
+      // The theme, set before the first paint so the page never flashes the wrong one. It
+      // follows the device's light or dark setting, unless the switch in the site bar saved a
+      // different choice on this device.
       (function (html) {
-        var theme = "dark";
+        var saved = null;
         try {
-          if (localStorage.getItem("ct-theme") === "light") theme = "light";
+          saved = localStorage.getItem("ct-theme");
         } catch (e) {}
+        var theme = saved === "light" || saved === "dark" ? saved : matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
         html.dataset.theme = theme;
         document.querySelector('meta[name="theme-color"]').content = theme === "light" ? "#f6f5f1" : "#050505";
       })(document.documentElement);
@@ -238,18 +240,34 @@ const query = path === "/search" ? (Astro.url.searchParams.get("q") ?? "").slice
       boot();
       interceptLinks();
 
-      // Light/dark switch: flips the theme now and remembers the choice on this device.
+      // Light/dark switch. The site follows the device setting, live, until the switch is used.
+      // A choice that differs from the device is remembered on this device; flipping back to
+      // match the device forgets it, so the site follows the device again.
       const themeSwitch = document.querySelector<HTMLButtonElement>(".theme-switch")!;
-      const showTheme = () => themeSwitch.setAttribute("aria-checked", String(document.documentElement.dataset.theme === "light"));
-      showTheme();
-      themeSwitch.addEventListener("click", () => {
-        const light = document.documentElement.dataset.theme !== "light";
+      const systemLight = matchMedia("(prefers-color-scheme: light)");
+      const setTheme = (light: boolean) => {
         document.documentElement.dataset.theme = light ? "light" : "dark";
         document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')!.content = light ? "#f6f5f1" : "#050505";
+        themeSwitch.setAttribute("aria-checked", String(light));
+      };
+      const saved = () => {
         try {
-          localStorage.setItem("ct-theme", light ? "light" : "dark");
+          return localStorage.getItem("ct-theme");
+        } catch {
+          return null;
+        }
+      };
+      setTheme(document.documentElement.dataset.theme === "light");
+      themeSwitch.addEventListener("click", () => {
+        const light = document.documentElement.dataset.theme !== "light";
+        setTheme(light);
+        try {
+          if (light === systemLight.matches) localStorage.removeItem("ct-theme");
+          else localStorage.setItem("ct-theme", light ? "light" : "dark");
         } catch {}
-        showTheme();
+      });
+      systemLight.addEventListener("change", (e) => {
+        if (!saved()) setTheme(e.matches);
       });
       initClamp();
       initTabs();

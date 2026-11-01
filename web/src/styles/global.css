@@ -89,8 +89,8 @@
   color-scheme: dark;
 }
 
-/* Light theme: warm off-white paper with near-black ink. Picked with the switch in the
-   site bar and remembered; dark stays the default. Party, pass and fail colors are
+/* Light theme: warm off-white paper with near-black ink. Follows the device's setting,
+   or the switch in the site bar. Party, pass and fail colors are
    deepened so they keep their contrast on white. */
 :root[data-theme="light"] {
   --bg: #f6f5f1;
