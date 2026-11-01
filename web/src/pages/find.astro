@@ -1,11 +1,13 @@
 ---
-// Find your representatives from an address (via the U.S. Census Bureau's geocoder) or a
-// state. The address is posted, not put in the URL, and never stored or logged.
+// Find your representatives from an address (via the U.S. Census Bureau's geocoder), a
+// member's name, or a state. The address is posted, not put in the URL, and never stored or
+// logged.
 import Panel from "../components/Panel.astro";
 import Terminal, { type Line } from "../components/Terminal.astro";
 import Layout from "../layouts/Layout.astro";
 import { memberStats, rows } from "../lib/db";
 import { CONGRESS, partyClass, PARTY, STATES } from "../lib/format";
+import { matchMembers } from "../lib/names";
 
 // The Census vintage whose congressional districts match the Congress being tracked.
 const VINTAGES: Record<number, string> = { 119: "ACS2025_Current", 120: "Current_Current" };
@@ -21,18 +23,26 @@ interface Rep {
   website: string | null;
   contact_form: string | null;
   photo_url: string | null;
+  first_name: string | null;
+  last_name: string | null;
 }
+const REP_COLUMNS = "bioguide_id, full_name, first_name, last_name, party, state, district, chamber, phone, website, contact_form, photo_url";
 
 let state = (Astro.url.searchParams.get("state") ?? "").toUpperCase();
 let district: number | null = null;
 let matched: string | null = null;
 let error: string | null = null;
 let address = "";
+// Members found by name, when what was typed has no house number.
+let byName: Rep[] | null = null;
 const lines: Line[] = [];
 
 if (Astro.request.method === "POST") {
   address = String((await Astro.request.formData()).get("address") ?? "").trim().slice(0, 200);
-  if (address) {
+  if (address && !/\d/.test(address)) {
+    byName = matchMembers(address, await rows<Rep>(`SELECT ${REP_COLUMNS} FROM members WHERE in_office = 1 ORDER BY chamber DESC, last_name`));
+    if (!byName.length) error = "No member of Congress by that name. Check the spelling, enter a home address, or pick your state below.";
+  } else if (address) {
     lines.push({ text: "Looking up the address with the U.S. Census Bureau…" });
     try {
       const url = new URL("https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress");
@@ -41,10 +51,7 @@ if (Astro.request.method === "POST") {
       const data = (await res.json()) as { result?: { addressMatches?: { matchedAddress: string; geographies: Record<string, Record<string, string>[]> }[] } };
       const hit = data.result?.addressMatches?.[0];
       if (!hit) {
-        // A name instead of an address (no house number) belongs in Search.
-        error = /\d/.test(address)
-          ? "No match for that address. Check the street and city, or pick your state below."
-          : "That doesn't look like a street address. Enter a home address with a house number, or search for a member by name.";
+        error = "No match for that address. Check the street and city, or pick your state below.";
         lines.push({ text: "No match found", tone: "alert" });
       } else {
         matched = hit.matchedAddress;
@@ -64,20 +71,18 @@ if (Astro.request.method === "POST") {
 }
 
 const validState = state in STATES ? state : "";
-const reps = validState
-  ? await rows<Rep>(
-      `SELECT bioguide_id, full_name, party, state, district, chamber, phone, website, contact_form, photo_url
-         FROM members WHERE in_office = 1 AND state = ? ORDER BY chamber DESC, district`,
-      validState,
-    )
-  : [];
+const reps = byName
+  ? byName
+  : validState
+    ? await rows<Rep>(`SELECT ${REP_COLUMNS} FROM members WHERE in_office = 1 AND state = ? ORDER BY chamber DESC, district`, validState)
+    : [];
 const senators = reps.filter((r) => r.chamber === "senate");
 const house = district === null ? reps.filter((r) => r.chamber === "house") : reps.filter((r) => r.chamber === "house" && r.district === district);
 const stats = reps.length ? new Map((await memberStats()).map((s) => [s.id, s])) : new Map();
 if (reps.length) lines.push({ text: `Found ${senators.length + house.length} members of Congress`, tone: "ok" });
 // Cards shown before "Show all" in a long list (Texas has 38 representatives).
 const FOLD = 6;
-const seatLabel = (r: Rep) => (r.chamber === "senate" ? "Senator" : `Representative · ${r.state}-${r.district === 0 ? "AL" : r.district}`);
+const seatLabel = (r: Rep) => (r.chamber === "senate" ? (byName ? `Senator · ${r.state}` : "Senator") : `Representative · ${r.state}-${r.district === 0 ? "AL" : r.district}`);
 ---
 
 <Layout title="Find my representatives" crumbs={validState ? [{ label: "Find my rep", href: "/find" }, { label: STATES[validState] ?? validState }] : [{ label: "Find my rep" }]}>
@@ -86,7 +91,7 @@ const seatLabel = (r: Rep) => (r.chamber === "senate" ? "Senator" : `Representat
       <Panel>
         <form class="panel-body cmd" method="post" action="/find#results">
           <h1 class="cmd-title">Find your representatives</h1>
-          <label class="cmd-label" for="addr">Your home address</label>
+          <label class="cmd-label" for="addr">Your home address, or a member's name</label>
           <div class="cmd-line">
             <span aria-hidden="true">&gt;</span>
             <input id="addr" name="address" type="text" placeholder="Street address, city, state" autocomplete="street-address" value={address} required />
@@ -112,7 +117,7 @@ const seatLabel = (r: Rep) => (r.chamber === "senate" ? "Senator" : `Representat
 
     {/* Results land here; the forms jump to #results so they show without scrolling. */}
     <div id="results" class="results">
-    {error && <p class="error">{error}{!/\d/.test(address) && address && <> <a class="link" href={`/search?q=${encodeURIComponent(address)}`}>Search for “{address}”</a></>}</p>}
+    {error && <p class="error">{error}</p>}
 
     {
       [
@@ -125,7 +130,8 @@ const seatLabel = (r: Rep) => (r.chamber === "senate" ? "Senator" : `Representat
             <h2 class="group-title">
               {g.title}
               {matched && <span class="group-for"> · for {matched}</span>}
-              {!matched && validState && <span class="group-for"> · {STATES[validState]}</span>}
+              {!matched && byName && <span class="group-for"> · matching “{address}”</span>}
+              {!matched && !byName && validState && <span class="group-for"> · {STATES[validState]}</span>}
             </h2>
             {gi === 0 && <p class="note group-note">“Votes with party”: how often they sided with their party when the two parties split.</p>}
             {/* A big state's House list shows its first few members and a button for the rest

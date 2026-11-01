@@ -727,6 +727,7 @@ const UNITY_TIP = "On votes where most Democrats and most Republicans voted on o
     width: 100%;
     height: 100%;
     object-fit: cover;
+    object-position: 50% 15%;
     filter: grayscale(1) contrast(1.08);
   }
   /* The portrait swaps in with a quick scan once it has loaded; until then the old one dims. */
@@ -796,9 +797,9 @@ const UNITY_TIP = "On votes where most Democrats and most Republicans voted on o
   .hemi-log :global(.term) {
     padding: 14px 0 0;
   }
-  /* Wide screens: the preview runs down the right of the chart and its log, with a shorter
-     portrait, so the chart column doesn't end far above it and leave a blank band. (Touch
-     screens show the preview below the chart instead; see further down.) */
+  /* Wide screens: the preview runs down the right of the chart and its log. The portrait
+     keeps the photos' own upright shape so faces aren't cropped. (Touch screens show the
+     preview below the chart instead; see further down.) */
   @media (min-width: 1241px) and (hover: hover) {
     .hemi-layout {
       grid-template-rows: auto 1fr;
@@ -814,10 +815,7 @@ const UNITY_TIP = "On votes where most Democrats and most Republicans voted on o
       grid-area: 1 / 2 / 3 / 3;
     }
     .viewfinder {
-      aspect-ratio: 4 / 3;
-    }
-    .viewfinder img {
-      object-position: 50% 20%;
+      aspect-ratio: 450 / 550;
     }
   }
   .insp-open {
