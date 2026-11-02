@@ -1,0 +1,11 @@
+{
+  "id": "119-hr-8684",
+  "kind": "full",
+  "overview": "This bill targets how hospitals bill for care given at outpatient clinics they own that sit away from the main hospital campus. Starting with plan years beginning on or after January 1, 2027, a hospital billing an employer-sponsored health plan for care at such an off-campus site would have to get a separate, unique identification number for that site and put it on the claim; otherwise it could not bill the plan or the patient, and the plan could not pay. The goal is to show clearly where care was actually given, since hospital-owned sites can charge more than independent doctors' offices for similar services. The Labor Department would set up a way to report suspected violations and could fine hospitals up to $300 a day for those with 30 or fewer beds, or up to $5,500 a day for larger ones. The rules would be added to ERISA, the main federal law governing employer health and retirement plans. As of July 13, 2026, a House committee had approved it and it was awaiting a vote by the full House.",
+  "for": "Supporters say requiring a separate ID for each off-campus site lets employers and patients see where care really happened and helps stop hospitals from charging higher hospital rates for routine clinic visits.",
+  "against": "Critics say the new billing requirements and daily fines add paperwork and costs for hospitals, including small rural ones, and that patients could be caught in disputes if claims are rejected over coding issues.",
+  "text_version": "Reported in House",
+  "text_url": "https://www.govinfo.gov/content/pkg/BILLS-119hr8684rh/html/BILLS-119hr8684rh.htm",
+  "written": "2026-11-01",
+  "model": "Claude Opus 5.5"
+}

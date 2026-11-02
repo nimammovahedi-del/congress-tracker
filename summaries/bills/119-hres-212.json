@@ -1,0 +1,11 @@
+{
+  "id": "119-hres-212",
+  "kind": "full",
+  "overview": "The Constitution says bills that raise revenue, such as tax measures, must start in the House of Representatives. This House resolution declares that Senate Joint Resolution 3, which the Senate passed first, breaks that rule and sends it back to the Senate. S.J.Res. 3 would have used the Congressional Review Act, a law that lets Congress overturn recent agency rules, to cancel an Internal Revenue Service rule requiring certain cryptocurrency and other digital asset brokers to report sales proceeds to the IRS. Returning the measure, a step often called a \"blue slip,\" means the House will not act on the Senate version; the House can still take up its own version of the same idea. The House agreed to the resolution on March 11, 2025.",
+  "for": "Supporters say the House is guarding its constitutional role over revenue measures, since canceling an IRS reporting rule affects tax collection and should begin in the House.",
+  "against": "Critics say the move is a procedural step that delays action on the underlying issue, and that it raises a technical objection rather than settling whether the crypto reporting rule should stand.",
+  "text_version": "Engrossed in House",
+  "text_url": "https://www.govinfo.gov/content/pkg/BILLS-119hres212eh/html/BILLS-119hres212eh.htm",
+  "written": "2026-11-01",
+  "model": "Claude Opus 5.5"
+}

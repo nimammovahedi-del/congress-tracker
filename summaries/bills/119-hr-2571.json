@@ -1,0 +1,11 @@
+{
+  "id": "119-hr-2571",
+  "kind": "full",
+  "overview": "This bill deals with 'stop-loss' insurance, which employers that pay their workers' health claims directly (known as self-insuring or self-funding) buy to protect themselves against unexpectedly large claims. It amends ERISA, the main federal law governing job-based benefits, to say that stop-loss policies are not 'health insurance coverage,' meaning they would not be regulated as regular health insurance. It also says federal law overrides any current or future state law that would prevent an employer health plan from insuring against unexpected or excessive claims losses. This would limit states' ability to restrict stop-loss coverage, which some states have used to keep smaller employers in the regular insurance market. As of December 15, 2025, a House committee had approved it and it was awaiting a vote by the full House.",
+  "for": "Supporters say stop-loss insurance protects the employer rather than covering patients directly, and that a single federal rule keeps states from blocking employers, including small ones, from self-funding their workers' health benefits.",
+  "against": "Critics say overriding state rules could encourage smaller employers with healthier workers to leave the regular insurance market, raising premiums for those who remain, and takes away a tool states use to protect consumers.",
+  "text_version": "Reported in House",
+  "text_url": "https://www.govinfo.gov/content/pkg/BILLS-119hr2571rh/html/BILLS-119hr2571rh.htm",
+  "written": "2026-11-01",
+  "model": "Claude Opus 5.5"
+}

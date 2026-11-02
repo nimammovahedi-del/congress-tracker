@@ -1,0 +1,11 @@
+{
+  "id": "119-hr-1320",
+  "kind": "full",
+  "overview": "This bill, called the Modern Worker Security Act, deals with how the law decides whether a worker is an employee or an independent contractor, a question that determines rights like minimum wage and overtime. It says that under all federal laws, the fact that a company provides a worker with benefits, such as health insurance, retirement savings, paid leave, disability coverage, workers' compensation or training, cannot be used as evidence that the worker is an employee. This includes \"portable\" benefits that workers keep when they stop working for that company. The aim is to let companies offer benefits to gig workers and contractors without the risk of having those workers reclassified as employees. As of February 20, 2026, the House Committee on Education and Workforce had approved it and it was awaiting a vote by the full House.",
+  "for": "Supporters say many companies avoid offering benefits to gig workers and independent contractors for fear of legal risk, and removing that fear would let millions of workers get health, retirement and other protections.",
+  "against": "Critics say benefits are often a sign of a real employment relationship, and ignoring them could make it easier for companies to classify workers as contractors and deny them minimum wage, overtime and other legal protections.",
+  "text_version": "Reported in House",
+  "text_url": "https://www.govinfo.gov/content/pkg/BILLS-119hr1320rh/html/BILLS-119hr1320rh.htm",
+  "written": "2026-11-01",
+  "model": "Claude Opus 5.5"
+}

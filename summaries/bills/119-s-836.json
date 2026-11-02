@@ -1,0 +1,11 @@
+{
+  "id": "119-s-836",
+  "kind": "full",
+  "overview": "This bill updates the Children's Online Privacy Protection Act (COPPA), a 1998 law that limits how websites collect personal information from children under 13, and extends its protections to teens aged 13 through 16. Websites, apps and online services aimed at kids, or that know or reasonably should know from the circumstances that a user is a child or teen, could not use those users' personal information for targeted advertising, could collect it only when needed for the service, and could not keep it longer than necessary. Teens could give or refuse consent themselves, and parents and teens would gain rights to see, correct and delete the information collected. Companies would not be required to verify users' ages or collect new age data, and states could pass stronger protections. The Federal Trade Commission (FTC) and state attorneys general would enforce it, and the bill also orders FTC reports and a study of teens' use of financial apps. As of March 16, 2026, it had passed the Senate and was waiting at the House desk.",
+  "for": "Supporters say the 1998 law has not kept up with smartphones, apps and data-driven advertising, and teens deserve the same basic protection from having their information tracked and sold to target ads at them.",
+  "against": "Critics say the 'knowledge fairly implied' standard is vague and could push companies to collect more information to figure out users' ages, and new limits could raise costs for smaller online services.",
+  "text_version": "Engrossed in Senate",
+  "text_url": "https://www.govinfo.gov/content/pkg/BILLS-119s836es/html/BILLS-119s836es.htm",
+  "written": "2026-11-01",
+  "model": "Claude Opus 5.5"
+}

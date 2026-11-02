@@ -1,0 +1,11 @@
+{
+  "id": "119-s-3404",
+  "kind": "full",
+  "overview": "The Satellite Cybersecurity Act aims to help protect privately owned satellites and their ground stations from hacking and interference. It directs the Government Accountability Office (GAO), Congress's investigative agency, to study what the federal government is doing to support satellite cybersecurity, how much other critical systems and federal agencies rely on commercial satellites, including foreign-owned ones, and to report within two years. It requires the Commerce Department, working with the Department of Homeland Security, to build a free public online clearinghouse of cybersecurity guidance and voluntary recommendations for satellite companies, with materials aimed at small businesses, and to deliver a coordination strategy within 120 days. The bill states that it does not create new regulations, does not make satellites an official critical infrastructure sector, and does not expand existing agency powers. The Senate passed it on September 23, 2026, and as of September 24, 2026, it was being held at the desk in the House.",
+  "for": "Supporters say satellites underpin GPS, communications and other vital services, and pulling scattered federal guidance into one place helps companies, especially small ones, defend against growing threats.",
+  "against": "Critics say voluntary guidance and studies may not be enough to address serious security risks, while others may see the new clearinghouse and reports as duplicating work agencies already do.",
+  "text_version": "Engrossed in Senate",
+  "text_url": "https://www.govinfo.gov/content/pkg/BILLS-119s3404es/html/BILLS-119s3404es.htm",
+  "written": "2026-11-01",
+  "model": "Claude Opus 5.5"
+}

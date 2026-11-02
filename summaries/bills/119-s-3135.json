@@ -1,0 +1,11 @@
+{
+  "id": "119-s-3135",
+  "kind": "full",
+  "overview": "Modern diesel trucks and farm machines have emissions control systems that use a liquid called diesel exhaust fluid, and if the system detects a problem, federal rules require the engine to lose power (a \"derate\") or shut down to push owners to fix it. This bill directs the Environmental Protection Agency (EPA) to change its Clean Air Act rules within 180 days so that manufacturers may switch off those power cuts and shutdowns whenever the outside temperature is 20 degrees Fahrenheit or colder, with normal operation returning once it warms up. It also lets manufacturers permanently turn off those power cuts on farm equipment such as tractors and combines, and on vehicles mainly operated in the far north (above 59 degrees north latitude, which covers most of Alaska). Only the manufacturer, not owners or repair shops, could make these changes. The bill states that it does not waive any Clean Air Act emissions standard. As of September 16, 2026, it had been approved by a Senate committee and placed on the Senate calendar.",
+  "for": "Supporters say an engine that loses power or shuts down in bitter cold or in the middle of harvest can strand drivers and crews and cost farmers dearly, and that a sensor fault shouldn't create those risks.",
+  "against": "Critics say removing the penalty that pushes owners to repair emissions systems, permanently in some cases, could let more vehicles run with broken pollution controls even though the standards technically stay on the books.",
+  "text_version": "Reported to Senate",
+  "text_url": "https://www.govinfo.gov/content/pkg/BILLS-119s3135rs/html/BILLS-119s3135rs.htm",
+  "written": "2026-11-01",
+  "model": "Claude Opus 5.5"
+}

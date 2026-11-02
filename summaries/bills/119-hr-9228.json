@@ -1,0 +1,11 @@
+{
+  "id": "119-hr-9228",
+  "kind": "full",
+  "overview": "Many employers provide health coverage through their own group health plans and hire outside companies, such as insurers, claims administrators, and pharmacy benefit managers, to run them, but those contracts sometimes limit what claims and cost data the employer can see. This bill, the Health DATA Act, amends the federal law governing employer benefit plans (known as ERISA) so that a plan's service contracts count as reasonable only if they give the employer full, timely access to its claims data, supporting records, fees, pricing terms, and information on overpayments. Contracts could not delay access by more than 15 days, restrict how much data is shared, or block the employer from choosing its own auditor or flagging suspicious claims. The data must be provided free in standard electronic formats and handled under HIPAA, the federal health privacy law. Contract terms that block access would be void, the Labor Department could fine violators up to $10,000 a day, and the rules would apply starting with plan years that begin a year after enactment. As of September 15, 2026, it had been approved by a House committee and placed on the House calendar.",
+  "for": "Supporters say employers pay for their workers' health care and can't control costs or catch errors and fraud if middlemen keep the data hidden, and opening it up could lower costs for both employers and workers.",
+  "against": "Critics say the new requirements and steep daily fines could raise administrative costs for plan service companies, which may be passed on to employers, and sharing more detailed claims data increases privacy and security risks.",
+  "text_version": "Reported in House",
+  "text_url": "https://www.govinfo.gov/content/pkg/BILLS-119hr9228rh/html/BILLS-119hr9228rh.htm",
+  "written": "2026-11-01",
+  "model": "Claude Opus 5.5"
+}

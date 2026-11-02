@@ -1,0 +1,11 @@
+{
+  "id": "119-s-3755",
+  "kind": "full",
+  "overview": "This bill, the Digital Commodity Intermediaries Act, would create a federal rulebook for markets where people buy and sell crypto assets that count as \"digital commodities,\" such as certain blockchain tokens and meme coins, but not securities or stablecoins. It gives the Commodity Futures Trading Commission (CFTC), the agency that oversees futures and commodity markets, authority over these cash or spot markets, requiring crypto exchanges, brokers, and dealers to register, keep customer assets separate, meet capital and conflict-of-interest rules, and certify that tokens they list meet legal standards. Companies would get a fast-track provisional registration while full rules are written, and the CFTC would be paid for this oversight through fees on registered firms. It exempts software developers, people who run blockchain networks, and makers of self-custody wallets from registration, while keeping the CFTC's power to pursue fraud and manipulation, and it creates an office to advocate for everyday crypto traders. As of February 2, 2026, a Senate committee had approved it and it was awaiting a vote by the full Senate.",
+  "for": "Supporters say clear federal rules and registration would protect customers, bring crypto trading out of a legal gray zone, and keep innovation in the United States.",
+  "against": "Critics say placing crypto markets under the CFTC, a smaller agency than securities regulators, and exempting developers and decentralized platforms could leave gaps in investor protection.",
+  "text_version": "Reported to Senate",
+  "text_url": "https://www.govinfo.gov/content/pkg/BILLS-119s3755rs/html/BILLS-119s3755rs.htm",
+  "written": "2026-11-01",
+  "model": "Claude Opus 5.5"
+}

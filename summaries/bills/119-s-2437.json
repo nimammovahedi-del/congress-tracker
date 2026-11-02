@@ -1,0 +1,11 @@
+{
+  "id": "119-s-2437",
+  "kind": "full",
+  "overview": "This bill renews the Snow Water Supply Forecasting Program, a federal Interior Department program that tests new ways to measure mountain snowpack and predict how much water will flow into rivers and reservoirs when the snow melts. Much of the western United States depends on that snowmelt for drinking water, farming and hydropower. The bill shifts the program from an early study phase to ongoing work, adding tools such as imaging spectroscopy (reading snow conditions from reflected light), machine learning and computer modeling, and it tells the program to focus on river basins where better forecasts can guide decisions shared by many water users or several states. It requires reports comparing the new forecasts against existing forecasts from the Agriculture Department and the National Oceanic and Atmospheric Administration (NOAA). It authorizes $3 million a year for fiscal years 2027 through 2031, replacing the earlier $15 million total for 2022 through 2026. As of October 5, 2026, it had passed the Senate and was waiting for action in the House.",
+  "for": "Supporters say more accurate snowmelt forecasts help water managers, farmers and cities plan for droughts and floods, and that a modest yearly budget is a small price for better decisions about scarce western water.",
+  "against": "Critics say the program overlaps with forecasting the Agriculture Department and NOAA already do, and that adding another federal effort risks duplication rather than improving the existing forecasts.",
+  "text_version": "Engrossed in Senate",
+  "text_url": "https://www.govinfo.gov/content/pkg/BILLS-119s2437es/html/BILLS-119s2437es.htm",
+  "written": "2026-11-01",
+  "model": "Claude Opus 5.5"
+}

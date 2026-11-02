@@ -1,0 +1,11 @@
+{
+  "id": "119-hr-5638",
+  "kind": "full",
+  "overview": "This bill changes how companies pay royalties for producing geothermal energy (heat from underground used to make electricity) on land leased from the federal government. Under the Geothermal Steam Act of 1970, leaseholders pay a lower royalty rate for the first 10 years of production under a lease and a higher rate after that. The bill would instead start that 10-year lower-rate period separately for each geothermal power plant, counting from the date that plant begins operating, so a new plant built on an older lease would get its own 10 years at the lower rate. It defines a power plant as separate from others unless they share a turbine. As of May 20, 2026, a House committee had approved the bill and it was awaiting a vote by the full House.",
+  "for": "Supporters say the change encourages companies to build additional geothermal plants on existing leases by giving each new plant the same starting royalty break, helping expand a domestic source of electricity.",
+  "against": "Critics say extending the lower royalty rate to each new plant would reduce the payments the public receives for energy produced on federal land.",
+  "text_version": "Reported in House",
+  "text_url": "https://www.govinfo.gov/content/pkg/BILLS-119hr5638rh/html/BILLS-119hr5638rh.htm",
+  "written": "2026-11-01",
+  "model": "Claude Opus 5.5"
+}

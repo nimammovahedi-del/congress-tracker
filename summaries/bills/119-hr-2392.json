@@ -1,0 +1,11 @@
+{
+  "id": "119-hr-2392",
+  "kind": "full",
+  "overview": "The STABLE Act would create federal rules for \"payment stablecoins,\" which are digital tokens designed to hold a steady value, usually one U.S. dollar, and be used for payments. Only approved issuers, such as subsidiaries of banks or credit unions, federally approved nonbank companies, or state-approved issuers, could issue them in the U.S., and after 18 months exchanges and other middlemen could sell only approved coins (or coins from foreign countries with comparable rules). Issuers would have to back every coin at least one-for-one with cash, bank deposits, short-term Treasury bills, or similar safe assets, publish monthly reports on those reserves, allow timely redemption, and could not pay interest to holders. The bill gives coin holders first claim on reserves if an issuer goes bankrupt, requires custodians to keep customer coins separate from their own funds, puts a two-year pause on new stablecoins whose value relies only on another token from the same creator, and declares that approved payment stablecoins are not securities. As of May 6, 2025, the House Financial Services Committee had approved it and it was awaiting a vote by the full House.",
+  "for": "Supporters say clear federal rules with full reserve backing, regular disclosures, and protections in bankruptcy would make stablecoins safer for consumers while keeping digital payment innovation in the United States.",
+  "against": "Critics say letting state regulators and nonbank companies issue dollar-like coins could leave gaps in oversight, and that the bill treats a fast-growing, risky market too lightly compared with how banks are regulated.",
+  "text_version": "Reported in House",
+  "text_url": "https://www.govinfo.gov/content/pkg/BILLS-119hr2392rh/html/BILLS-119hr2392rh.htm",
+  "written": "2026-11-01",
+  "model": "Claude Opus 5.5"
+}

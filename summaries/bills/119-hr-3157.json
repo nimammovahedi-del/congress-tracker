@@ -1,0 +1,11 @@
+{
+  "id": "119-hr-3157",
+  "kind": "full",
+  "overview": "This bill would require state utility regulators in states with an \"intermittent energy policy\" to study and publicly report how that policy affects the power grid. The bill defines such a policy as a state requirement that utilities get a set share of their electricity from sources that cannot run nonstop for at least 30 days with fuel on hand or under contract, which would generally include wind and solar. Each report would look at grid reliability over 10 years, whether the required power sources can meet demand during emergencies, heat waves or extreme weather, the effect on electricity rates, whether power plants being retired can be adequately replaced, and how much the state relies on power from other states. Under the federal law it amends, the Public Utility Regulatory Policies Act, state regulators would have one year to consider whether to adopt this evaluation standard. As of September 17, 2025, it had been reported by a House committee and placed on the House calendar.",
+  "for": "Supporters say requiring states to look closely at the reliability and cost effects of their renewable energy mandates would help prevent blackouts and give the public clear information about what those policies mean for their power bills.",
+  "against": "Critics say the bill singles out renewable energy policies for extra federal scrutiny of decisions that belong to the states, and its definition of reliable power favors fuel-based plants without weighing their own risks, such as fuel supply disruptions.",
+  "text_version": "Reported in House",
+  "text_url": "https://www.govinfo.gov/content/pkg/BILLS-119hr3157rh/html/BILLS-119hr3157rh.htm",
+  "written": "2026-11-01",
+  "model": "Claude Opus 5.5"
+}

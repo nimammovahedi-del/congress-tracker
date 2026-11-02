@@ -1,0 +1,11 @@
+{
+  "id": "119-s-1378",
+  "kind": "full",
+  "overview": "This bill, the TAME Extreme Weather and Wildfires Act, directs the National Oceanic and Atmospheric Administration (NOAA), the federal weather and ocean agency that runs the National Weather Service, to expand its use of artificial intelligence in weather forecasting. Within four years, NOAA would build curated datasets for training AI weather models, and it could develop and test AI-based global, regional and local forecast models, while continuing its traditional observation and computer-model work. NOAA would also help forecasters and emergency managers use AI forecasts, work with private, academic and international partners, and plan to make its AI models and related data free to the public, with exceptions for national security and proprietary information. The bill also requires a report on risks from foreign countries of concern gaining access to U.S. weather data and authorizes $105 million for 2026 and $25 million a year for 2027 through 2030. As of October 21, 2025, the bill had been approved by a Senate committee and placed on the Senate's calendar.",
+  "for": "Supporters say AI models could make forecasts of storms, floods and wildfires faster and more accurate, giving communities and emergency managers more time to prepare, while NOAA keeps its proven traditional forecasting work.",
+  "against": "Critics say the bill adds new spending for a fast-changing technology whose reliability in official forecasts is still being tested, and that partnerships sharing intellectual property with private companies could blur public and private roles.",
+  "text_version": "Reported to Senate",
+  "text_url": "https://www.govinfo.gov/content/pkg/BILLS-119s1378rs/html/BILLS-119s1378rs.htm",
+  "written": "2026-11-01",
+  "model": "Claude Opus 5.5"
+}

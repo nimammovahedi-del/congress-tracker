@@ -1,0 +1,11 @@
+{
+  "id": "119-s-3199",
+  "kind": "full",
+  "overview": "The 988 Suicide and Crisis Lifeline is the national phone number people can call or text during a mental health crisis, but unlike 911, calls to it generally do not carry the caller's location. This bill orders the Federal Communications Commission (FCC), which regulates phone companies, to open a formal public inquiry within 270 days into the problems with sending location information along with 988 calls. The FCC must weigh legal authority, caller privacy, technical feasibility, costs and who pays them, access for deaf and hard-of-hearing callers who use video calling, and ways to pass location from 988 centers to 911 centers. Separately, the Government Accountability Office (GAO), Congress's nonpartisan watchdog, must study the same questions within 180 days after consulting phone carriers, crisis centers, the Veterans Crisis Line, state and local governments, and mental health groups. The bill studies the issue but does not itself require any location sharing. As of May 12, 2026, it had passed the Senate and was being held at the desk in the House.",
+  "for": "Supporters say knowing where a caller is can help crisis counselors send help quickly when someone is in immediate danger, and a careful study is the right first step before any requirement.",
+  "against": "Critics say sending callers' locations to a crisis line raises real privacy concerns that could discourage some people from calling, and that the bill only adds more study rather than solving the problem.",
+  "text_version": "Engrossed in Senate",
+  "text_url": "https://www.govinfo.gov/content/pkg/BILLS-119s3199es/html/BILLS-119s3199es.htm",
+  "written": "2026-11-01",
+  "model": "Claude Opus 5.5"
+}

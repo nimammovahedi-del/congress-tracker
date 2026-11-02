@@ -1,0 +1,11 @@
+{
+  "id": "119-hr-1602",
+  "kind": "full",
+  "overview": "This bill increases transparency about how the government collects and shares financial reports filed under the Bank Secrecy Act, a law that requires banks and other businesses to report large cash transactions and suspicious activity to the Financial Crimes Enforcement Network (FinCEN), a Treasury Department office. Treasury would have to report to Congress each year on how many reports are filed and kept, its rules for how law enforcement, intelligence, and national security agencies can access that information, how often those agencies search it, and any denials or revocations of access. Treasury would also have to review those access rules every year with the Director of National Intelligence and the Attorney General to better protect Americans' privacy and civil liberties, and share any changes with Congress. The requirements end after seven years. As of March 21, 2025, a House committee had approved it and it was placed on the House calendar.",
+  "for": "Supporters say the government gathers huge amounts of sensitive financial data on ordinary Americans, and Congress and the public deserve to know how it is used and protected.",
+  "against": "Critics say the bill adds reporting work without limiting what is actually collected, and disclosing details about how agencies search this data could help criminals understand how investigators work.",
+  "text_version": "Reported in House",
+  "text_url": "https://www.govinfo.gov/content/pkg/BILLS-119hr1602rh/html/BILLS-119hr1602rh.htm",
+  "written": "2026-11-01",
+  "model": "Claude Opus 5.5"
+}

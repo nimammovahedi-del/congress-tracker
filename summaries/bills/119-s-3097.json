@@ -1,0 +1,11 @@
+{
+  "id": "119-s-3097",
+  "kind": "full",
+  "overview": "The main federal health privacy law, known as HIPAA, covers doctors, hospitals, and insurers, but not the many apps, wearable devices, websites, and data brokers that also collect health information. This bill, the Health Information Privacy Reform Act, would direct the Department of Health and Human Services (HHS), working with the Federal Trade Commission, to write privacy, security, and data-breach rules for those companies that are at least as strong as HIPAA's. People would gain rights to see, correct, delete, and move their health data, and companies would need written permission to sell or market it, could collect and keep only what they need, and could not sell it to government agencies without a warrant or court order. The bill would also set rules on using health data to train artificial intelligence, create stricter national standards for \"de-identified\" data (information stripped of names), make it illegal to re-identify such data, and let providers and insurers charge outside parties, other than the patient or their doctors, fees set by state law for copies of patients' records sent at a patient's request. As of August 4, 2026, it had been approved by a Senate committee and placed on the Senate calendar.",
+  "for": "Supporters say health information collected by apps and devices is just as sensitive as medical records, and closing this gap gives people real control over who can see and sell it.",
+  "against": "Critics say the new rules and compliance costs could burden technology companies and researchers, and leaving key details to future regulations creates years of uncertainty about what will be required.",
+  "text_version": "Reported to Senate",
+  "text_url": "https://www.govinfo.gov/content/pkg/BILLS-119s3097rs/html/BILLS-119s3097rs.htm",
+  "written": "2026-11-01",
+  "model": "Claude Opus 5.5"
+}

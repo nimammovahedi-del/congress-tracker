@@ -1,0 +1,11 @@
+{
+  "id": "119-hr-3379",
+  "kind": "full",
+  "overview": "This bill, the HUMPS Act of 2025, would change how federal bank regulators grade the health of banks and credit unions. Regulators use a scoring system called CAMELS, which rates Capital, Asset quality, Management, Earnings, Liquidity and Sensitivity to market risk, and those scores affect things like deposit insurance costs and whether mergers are approved. The bill directs the council that coordinates the bank regulators to recommend clear, objective standards for each part of the score, and to either drop the \"management\" rating or limit it to objective measures of governance and risk controls. Regulators would then have 12 months to write rules putting the recommendations into effect, with at least 90 days for public comment. It also changes the definition of a \"well managed\" bank holding company. As of June 25, 2025, a House committee had approved it and it was awaiting a vote by the full House.",
+  "for": "Supporters say bank ratings rely too heavily on examiners' personal judgment, and objective, transparent standards would make supervision fairer and more consistent across similar banks.",
+  "against": "Critics say removing or narrowing the management rating could cause regulators to miss weak leadership and poor risk practices that often show up before a bank's numbers decline.",
+  "text_version": "Reported in House",
+  "text_url": "https://www.govinfo.gov/content/pkg/BILLS-119hr3379rh/html/BILLS-119hr3379rh.htm",
+  "written": "2026-11-01",
+  "model": "Claude Opus 5.5"
+}

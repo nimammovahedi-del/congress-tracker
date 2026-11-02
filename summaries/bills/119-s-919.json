@@ -1,0 +1,11 @@
+{
+  "id": "119-s-919",
+  "kind": "full",
+  "overview": "The GENIUS Act would create federal rules for \"payment stablecoins,\" digital tokens designed to always be worth a fixed amount, usually one U.S. dollar, and used to make payments. Only approved issuers could offer them in the U.S., with knowing violations punishable by fines of up to $1 million and up to 5 years in prison. Issuers would have to back every coin at least one-to-one with safe, easily sold assets such as cash, bank deposits, or short-term Treasury bills, publish their reserves monthly with outside accountant checks, and could not pay interest to holders. Smaller issuers (under $10 billion in coins) could choose state oversight, while larger ones would generally be supervised by federal banking regulators; issuers would also have to follow anti-money-laundering rules and be able to freeze coins under lawful orders. Holders would get first priority if an issuer goes bankrupt, and approved stablecoins would not be treated as securities or commodities. As of March 18, 2025, the Senate Banking Committee had approved it and it was placed on the Senate calendar.",
+  "for": "Supporters say clear rules would protect consumers with full reserves and regular disclosures, bring a fast-growing industry under supervision, and help keep the U.S. dollar central to digital payments.",
+  "against": "Critics say the bill could let large private companies issue money-like products with lighter oversight than banks, and the state option and exemptions from securities law could leave gaps in consumer and financial-stability protections.",
+  "text_version": "Reported to Senate",
+  "text_url": "https://www.govinfo.gov/content/pkg/BILLS-119s919rs/html/BILLS-119s919rs.htm",
+  "written": "2026-11-01",
+  "model": "Claude Opus 5.5"
+}

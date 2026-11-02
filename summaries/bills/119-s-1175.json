@@ -1,0 +1,11 @@
+{
+  "id": "119-s-1175",
+  "kind": "full",
+  "overview": "Payments in Lieu of Taxes (PILT) are yearly payments the Interior Department makes to counties and other local governments that cannot collect property taxes on federal land within their borders. Each payment is capped by a formula based on the local population, and under current law any place with fewer than 5,000 people is treated as having 5,000. This bill lowers that floor to 1,000 people and adds new tiers to the formula's table for populations between 1,000 and 5,000, with higher per-person amounts for the smallest places, and updates the dollar amounts for every tier up to 50,000 people. It mainly affects rural counties with large areas of federal land and very small populations. As of July 23, 2026, the Senate Energy and Natural Resources Committee had approved it and it was waiting for a vote by the full Senate.",
+  "for": "Supporters say the current formula lumps very small counties together and does not reflect their real situation, and finer tiers make payments fairer for places with large federal land holdings and few residents.",
+  "against": "Critics say changing the formula shifts how a limited pot of PILT money is divided, which could change payments to other counties, and the bill does not say how any new costs would be covered.",
+  "text_version": "Reported to Senate",
+  "text_url": "https://www.govinfo.gov/content/pkg/BILLS-119s1175rs/html/BILLS-119s1175rs.htm",
+  "written": "2026-11-01",
+  "model": "Claude Opus 5.5"
+}

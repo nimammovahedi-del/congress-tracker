@@ -1,0 +1,11 @@
+{
+  "id": "119-hres-1016",
+  "kind": "full",
+  "overview": "This House resolution tells the Clerk of the House to fix the wording of H.R. 7147, a bill the House had already passed, before it is sent to the Senate. The change is in section 230(b): a phrase referring to funds \"in this Act or any other act\" is replaced with funds \"for the Department of Homeland Security in this or any prior Act.\" The resolution also says the same correction should be carried into H.R. 7148 under a separate House rule (House Resolution 1014). Corrections like this, made during \"engrossment\" (preparing the official final House-passed copy), are used to fix drafting problems. The House agreed to it on January 22, 2026.",
+  "for": "Supporters say the fix narrows an overly broad phrase so the provision clearly applies only to Homeland Security funding, avoiding unintended effects on money for other agencies.",
+  "against": "Critics say changing the substance of a provision after a vote, even a narrow one, through a separate quick resolution gives members less chance to review and debate what the final bill actually says.",
+  "text_version": "Engrossed in House",
+  "text_url": "https://www.govinfo.gov/content/pkg/BILLS-119hres1016eh/html/BILLS-119hres1016eh.htm",
+  "written": "2026-11-01",
+  "model": "Claude Opus 5.5"
+}

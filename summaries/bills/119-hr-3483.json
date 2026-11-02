@@ -1,0 +1,11 @@
+{
+  "id": "119-hr-3483",
+  "kind": "full",
+  "overview": "This bill, the FRAUD Act, requires the Department of Veterans Affairs (VA) to use a computer system to catch fraud, waste and abuse in bills it pays to outside doctors and hospitals that treat veterans, including through the Veterans Community Care Program, which pays for care outside VA facilities. The system would continuously monitor claims, use past and real-time data and machine learning to flag suspicious patterns, and recheck claims after payment for overbilling or unnecessary services. The VA would pay for it from an existing internal VA fund and must have it running within a year, then report to Congress each year for several years on how well it works and how much it saves. It also extends, to January 30, 2034, an existing limit on VA pension payments to certain veterans living in nursing homes paid for by Medicaid, which helps offset the bill's costs. As of October 21, 2025, a House committee had approved it and it was placed on the House calendar.",
+  "for": "Supporters say automated screening of claims would help stop improper payments to outside providers, protecting money meant for veterans' care.",
+  "against": "Critics say automated flagging could delay or wrongly question legitimate claims from providers who treat veterans, and that extending the pension limit on nursing home residents to pay for it falls on low-income veterans.",
+  "text_version": "Reported in House",
+  "text_url": "https://www.govinfo.gov/content/pkg/BILLS-119hr3483rh/html/BILLS-119hr3483rh.htm",
+  "written": "2026-11-01",
+  "model": "Claude Opus 5.5"
+}

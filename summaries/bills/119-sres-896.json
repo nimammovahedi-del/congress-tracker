@@ -1,0 +1,11 @@
+{
+  "id": "119-sres-896",
+  "kind": "full",
+  "overview": "This Senate resolution states the Senate's views on religious freedom and artificial intelligence (AI), meaning computer systems such as chatbots that answer questions and generate text. It affirms religious freedom, including the right to have, practice, change, or have no faith, as a core constitutional liberty, and says bias against any religious group or against nonbelievers harms society. It encourages companies that build or run AI systems to adopt clear, consistently applied standards on religious freedom and transparency, and to give thorough, fair answers to religious questions that represent the relevant beliefs, texts, and traditions. It also urges Americans to consult sacred texts and religious leaders directly when trying to understand a faith. The resolution is not binding and does not create any rules for AI companies. As of September 23, 2026, the Senate had agreed to it by unanimous consent.",
+  "for": "Supporters say AI tools increasingly shape how people learn about religion, so it is reasonable for the Senate to encourage companies to treat all faiths, and people with no faith, fairly and to be open about their standards.",
+  "against": "Critics say the resolution is symbolic and imposes no requirements, and that judging whether an AI's answer about religion is 'fair' or 'representative' is subjective and better left to users and companies than to Congress.",
+  "text_version": "Agreed to Senate",
+  "text_url": "https://www.govinfo.gov/content/pkg/BILLS-119sres896ats/html/BILLS-119sres896ats.htm",
+  "written": "2026-11-01",
+  "model": "Claude Opus 5.5"
+}

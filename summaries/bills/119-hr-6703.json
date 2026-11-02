@@ -1,0 +1,11 @@
+{
+  "id": "119-hr-6703",
+  "kind": "full",
+  "overview": "This bill makes several changes aimed at lowering health insurance costs and giving employers more coverage options. It lets small businesses and self-employed people band together through associations, even across different industries, to offer group health plans, and it shields \"stop-loss\" insurance (which protects employers who pay workers' medical claims themselves from very large losses) from state laws that would restrict it. It writes into law a type of account in which employers give workers tax-free money to buy their own individual health insurance, and requires pharmacy benefit managers (the middlemen that handle drug coverage for health plans) to give employer plans detailed reports on drug costs and payments every six months, with fines for violations. It also permanently funds cost-sharing reduction payments, which lower deductibles and copays for lower-income people in Affordable Care Act marketplace plans, starting in 2027, but bars that money from going to plans that cover abortion except in cases of rape, incest or to save the mother's life. The House passed the bill, and as of December 18, 2025, it had been received in the Senate.",
+  "for": "Supporters say the bill gives small businesses and workers more affordable coverage choices, brings transparency to drug middlemen, and funds cost-sharing payments in a way expected to lower premiums.",
+  "against": "Critics say association plans and stop-loss changes could draw healthier groups away from regular insurance markets and weaken consumer protections, and that the abortion restriction on cost-sharing funds could leave some enrollees with fewer plan choices.",
+  "text_version": "Introduced in House",
+  "text_url": "https://www.govinfo.gov/content/pkg/BILLS-119hr6703ih/html/BILLS-119hr6703ih.htm",
+  "written": "2026-11-01",
+  "model": "Claude Opus 5.5"
+}

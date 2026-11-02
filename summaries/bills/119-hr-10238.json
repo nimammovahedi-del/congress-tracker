@@ -1,0 +1,11 @@
+{
+  "id": "119-hr-10238",
+  "kind": "full",
+  "overview": "This bill would require the Small Business Administration (SBA), the federal agency that supports small businesses, to create and share information and tools to help small businesses protect themselves against hacking and other cyber threats. The SBA would work with the Cybersecurity and Infrastructure Security Agency (CISA), the main federal cyber defense agency, and the National Institute of Standards and Technology (NIST), which writes technical standards. It would also have to give small businesses that want to work on federal contracts information about the Cybersecurity Maturity Model Certification, a set of cybersecurity requirements for Defense Department contractors, drawing on existing Defense Department help programs, and post it on its website. The SBA would report to Congress each year on how many small businesses contacted it about cybersecurity. As of October 13, 2026, a House committee had approved it and it was placed on the House calendar for a vote.",
+  "for": "Supporters say small businesses are frequent targets of cyberattacks but often lack the staff to defend themselves, and that clear guidance helps them protect data and compete for defense contracts.",
+  "against": "Critics say much of this guidance is already offered by CISA, NIST, and the Defense Department, so the bill mainly adds overlapping outreach and reporting rather than real new help.",
+  "text_version": "Reported in House",
+  "text_url": "https://www.govinfo.gov/content/pkg/BILLS-119hr10238rh/html/BILLS-119hr10238rh.htm",
+  "written": "2026-11-01",
+  "model": "Claude Opus 5.5"
+}
