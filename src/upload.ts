@@ -11,6 +11,8 @@
 //
 // The budget is spread across the day so later hourly runs still have room for fresh
 // updates. Updates to data already uploaded go first; then new data, newest first.
+// Cosponsor lists wait until everything else is uploaded: they are a quarter of all rows,
+// and a bill page still shows how many cosponsors there are without them.
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -21,6 +23,7 @@ import { ADDED_COLUMNS, columnMigrations } from "./migrations.ts";
 import { changedTables, estimateRows, loadUnits, unitSql, type Unit } from "./units.ts";
 
 const DAILY_BUDGET = Number(process.env.D1_DAILY_WRITE_BUDGET ?? 95_000);
+const DEFERRED = new Set(["bill_cosponsors"]);
 const RUN_LIMIT = Number(process.env.D1_RUN_LIMIT ?? Infinity);
 const BATCH_ROWS = 4_000; // estimated rows per uploaded file
 const BATCH_BYTES = 4_000_000;
@@ -79,14 +82,27 @@ const uploaded = new Map(
     JSON.parse(r.hash) as Record<string, string>,
   ]),
 );
-const pending = loadUnits(db)
-  .map((unit) => ({ unit, isNew: !uploaded.has(unit.id), tables: changedTables(unit, uploaded.get(unit.id)) }))
-  .filter((p) => p.tables.length > 0)
-  .sort((a, b) => Number(a.isNew) - Number(b.isNew) || (a.unit.sortDate < b.unit.sortDate ? 1 : -1));
+const newest = (a: { unit: Unit; isNew: boolean }, b: { unit: Unit; isNew: boolean }) =>
+  Number(a.isNew) - Number(b.isNew) || (a.unit.sortDate < b.unit.sortDate ? 1 : -1);
+const changes = loadUnits(db).map((unit) => ({ unit, isNew: !uploaded.has(unit.id), tables: changedTables(unit, uploaded.get(unit.id)) }));
+const pending = [
+  ...changes.map((c) => ({ ...c, tables: c.tables.filter((t) => !DEFERRED.has(t)) })).sort(newest),
+  ...changes.map((c) => ({ ...c, tables: c.tables.filter((t) => DEFERRED.has(t)) })).sort(newest),
+].filter((p) => p.tables.length > 0);
+// The fingerprints the hosted copy will hold, updated a step at a time (a unit's deferred
+// tables keep their old fingerprint until they are uploaded too).
+const recorded = new Map(changes.map((c) => [c.unit.id, { ...uploaded.get(c.unit.id) }]));
+const record = (unit: Unit, tables: string[]) => {
+  const hashes = recorded.get(unit.id)!;
+  for (const t of tables) hashes[t] = unit.hashes[t];
+  return hashes;
+};
 
-const newCount = pending.filter((p) => p.isNew).length;
+const units = new Set(pending.map((p) => p.unit.id)).size;
+const newCount = new Set(pending.filter((p) => p.isNew).map((p) => p.unit.id)).size;
+const deferredCount = pending.filter((p) => p.tables.every((t) => DEFERRED.has(t))).length;
 console.log(
-  `${pending.length} units to upload (${pending.length - newCount} updated, ${newCount} new). ` +
+  `${units} units to upload (${units - newCount} updated, ${newCount} new; ${deferredCount} cosponsor lists go last). ` +
     `Today: ${spent.toLocaleString()} of ${DAILY_BUDGET.toLocaleString()} writes used; this run may use ${Math.max(allowance, 0).toLocaleString()}.`,
 );
 
@@ -98,7 +114,7 @@ let used = 0;
 let done = 0;
 let index = 0;
 while (index < pending.length) {
-  const batch: Unit[] = [];
+  const batch: { unit: Unit; hashes: string }[] = [];
   const statements: string[] = [];
   let estimate = 0;
   let bytes = 0;
@@ -107,8 +123,9 @@ while (index < pending.length) {
     const cost = estimateRows(p.unit, p.tables, p.isNew) * ratio;
     // Always allow one unit per run, so even a large unit eventually goes through.
     if (used + estimate + cost > allowance && (batch.length || used > 0 || allowance <= 0)) break;
-    const sql = unitSql(p.unit, p.tables, nowIso());
-    batch.push(p.unit);
+    const hashes = record(p.unit, p.tables);
+    const sql = unitSql(p.unit, p.tables, hashes, nowIso());
+    batch.push({ unit: p.unit, hashes: JSON.stringify(hashes) });
     statements.push(...sql);
     estimate += cost;
     bytes += sql.reduce((n, s) => n + s.length, 0);
@@ -128,8 +145,8 @@ while (index < pending.length) {
       `ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
   );
   transaction(db, () => {
-    for (const unit of batch) {
-      upsert(db, "published_units", { unit: unit.id, hash: JSON.stringify(unit.hashes), published_at: nowIso() }, ["unit"]);
+    for (const { unit, hashes } of batch) {
+      upsert(db, "published_units", { unit: unit.id, hash: hashes, published_at: nowIso() }, ["unit"]);
     }
     setState(db, "d1-write-ratio", ratio.toFixed(3));
   });

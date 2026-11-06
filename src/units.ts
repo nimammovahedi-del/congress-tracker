@@ -184,8 +184,8 @@ export function estimateRows(unit: Unit, tables: string[], isNew: boolean): numb
 }
 
 // SQL that brings the hosted copy of `unit` up to date for the given tables, and records
-// the new fingerprints.
-export function unitSql(unit: Unit, tables: string[], uploadedAt: string): string[] {
+// `hashes` as the fingerprints now uploaded.
+export function unitSql(unit: Unit, tables: string[], hashes: Record<string, string>, uploadedAt: string): string[] {
   const statements: string[] = [];
   for (const table of tables) {
     const tableRows = unit.parts.get(table) ?? [];
@@ -198,7 +198,7 @@ export function unitSql(unit: Unit, tables: string[], uploadedAt: string): strin
   }
   statements.push(
     `INSERT INTO published_units (unit, hash, published_at) VALUES ` +
-      `(${sqlLiteral(unit.id)}, ${sqlLiteral(JSON.stringify(unit.hashes))}, ${sqlLiteral(uploadedAt)}) ` +
+      `(${sqlLiteral(unit.id)}, ${sqlLiteral(JSON.stringify(hashes))}, ${sqlLiteral(uploadedAt)}) ` +
       `ON CONFLICT (unit) DO UPDATE SET hash = excluded.hash, published_at = excluded.published_at;`,
   );
   return statements;

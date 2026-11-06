@@ -37,7 +37,8 @@ test("only tables whose fingerprint changed are resent", () => {
 
 test("long text is sent in pieces and every statement stays under D1's 100 KB limit", () => {
   const summary = "<p>" + "a".repeat(174_000) + "</p>";
-  const statements = unitSql(bill(summary, 400), ["bills", "bill_actions"], "now");
+  const unit = bill(summary, 400);
+  const statements = unitSql(unit, ["bills", "bill_actions"], unit.hashes, "now");
   for (const s of statements) assert.ok(s.length < 100_000, `statement of ${s.length} bytes`);
   const pieces = statements.filter((s) => s.startsWith("UPDATE bills SET crs_summary = crs_summary ||"));
   assert.equal(pieces.length, 5);
