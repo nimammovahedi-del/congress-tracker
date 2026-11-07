@@ -44,7 +44,23 @@ export async function fromAddress(address: string): Promise<Spot | null> {
 }
 
 // A city, town or ZIP code: OpenStreetMap finds its center, the Census Bureau the district there.
+// Places don't move, so each answer is kept in Cloudflare's cache for a month: a repeat of a
+// common city or ZIP code skips both lookups. (Street addresses are never cached.)
+const PLACE_TTL = 30 * 24 * 3600;
 export async function fromPlace(place: string): Promise<Spot | null> {
+  const cache = (globalThis as { caches?: { default?: Cache } }).caches?.default;
+  const key = new Request(`https://checkcongress.com/__place/${encodeURIComponent(normalizeName(place))}?v=${VINTAGE}`);
+  const kept = await cache?.match(key).catch(() => undefined);
+  if (kept) return (await kept.json()) as Spot | null;
+  const spot = await lookUpPlace(place);
+  if (spot) {
+    const body = new Response(JSON.stringify(spot), { headers: { "Content-Type": "application/json", "Cache-Control": `max-age=${PLACE_TTL}` } });
+    await cache?.put(key, body).catch(() => undefined);
+  }
+  return spot;
+}
+
+async function lookUpPlace(place: string): Promise<Spot | null> {
   const search = new URL("https://nominatim.openstreetmap.org/search");
   search.search = new URLSearchParams({ q: place, countrycodes: "us", format: "jsonv2", limit: "1" }).toString();
   const found = (await (

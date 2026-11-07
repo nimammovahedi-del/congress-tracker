@@ -63,8 +63,10 @@ if (Astro.request.method === "POST") {
       else error = "We couldn't find that street address. Check the spelling, or try just your city or ZIP code.";
     } else if (address) {
       // A member's name first; otherwise a city, town or ZIP code; then a last name alone.
-      const all = await members();
-      const named = /\d/.test(address) ? [] : matchMembers(address, all, false);
+      // A ZIP code or anything else with a digit can't be a name, so it skips the member list.
+      const hasDigit = /\d/.test(address);
+      const all = hasDigit ? [] : await members();
+      const named = hasDigit ? [] : matchMembers(address, all, false);
       if (named.length) byName = named;
       else {
         lines.push({ text: "Looking up the place…" });
@@ -73,7 +75,7 @@ if (Astro.request.method === "POST") {
           useSpot(spot);
           approximate = true;
         } else {
-          const loose = /\d/.test(address) ? [] : matchMembers(address, all);
+          const loose = hasDigit ? [] : matchMembers(address, all);
           if (loose.length) byName = loose;
           else error = "Nothing matched that. Try a street address, a city or ZIP code, a state, or a member's name.";
         }
