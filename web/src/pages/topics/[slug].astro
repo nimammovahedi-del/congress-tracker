@@ -23,6 +23,11 @@ if (status === "law") where.push("b.status = 'became_law'");
 if (status === "advanced") where.push("b.status NOT IN ('introduced', 'reported', 'failed')");
 const whereSql = where.join(" AND ");
 
+// The sync already counts each topic's bills, and each subtopic's; only a subtopic narrowed
+// by status needs counting here. (Every database row read counts against a daily limit.)
+const known = subject
+  ? status === "all" ? subject.bills : null
+  : { all: topic.bills, law: topic.laws, advanced: topic.advanced }[status];
 const [bills, count] = await Promise.all([
   rows<BillListItem>(
     `SELECT ${BILL_LIST_COLUMNS} FROM bills b ${BILL_LIST_JOIN} WHERE ${whereSql}
@@ -31,9 +36,9 @@ const [bills, count] = await Promise.all([
     PAGE,
     (page - 1) * PAGE,
   ),
-  row<{ n: number }>(`SELECT COUNT(*) AS n FROM bills b WHERE ${whereSql}`, ...args),
+  known ?? row<{ n: number }>(`SELECT COUNT(*) AS n FROM bills b WHERE ${whereSql}`, ...args).then((r) => r?.n ?? 0),
 ]);
-const total = count?.n ?? 0;
+const total = count;
 const pages = Math.max(1, Math.ceil(total / PAGE));
 const largestSub = Math.max(1, ...topic.subjects.map((s) => s.bills));
 
