@@ -29,7 +29,10 @@ const [stats, votes, voteCount, sponsored, terms] = await Promise.all([
     PAGE,
     (page - 1) * PAGE,
   ),
-  row<{ n: number }>(`SELECT COUNT(*) AS n FROM member_votes mv JOIN roll_calls r ON r.id = mv.roll_call_id WHERE mv.bioguide_id = ? ${filter}`, id),
+  // The full record's size is in the stats the sync stores; only the passage-votes filter is counted here.
+  passageOnly
+    ? row<{ n: number }>(`SELECT COUNT(*) AS n FROM member_votes mv JOIN roll_calls r ON r.id = mv.roll_call_id WHERE mv.bioguide_id = ? ${filter}`, id)
+    : null,
   rows<{ id: string; bill_type: string; number: number; title: string; status: string; latest_action_date: string | null }>(
     "SELECT id, bill_type, number, title, status, latest_action_date FROM bills WHERE sponsor_id = ? ORDER BY latest_action_date DESC LIMIT 12",
     id,
@@ -40,14 +43,18 @@ const [stats, votes, voteCount, sponsored, terms] = await Promise.all([
   ),
 ]);
 const s = stats.find((x) => x.id === id);
+const recordSize = voteCount?.n ?? s?.votes ?? 0;
 const party = m.party === "D" || m.party === "R" ? m.party : "I";
 const seat = m.chamber === "senate" ? `Senator · ${STATES[m.state ?? ""] ?? m.state}` : `Representative · ${memberTag(m).slice(2)}`;
-const pages = Math.max(1, Math.ceil((voteCount?.n ?? 0) / PAGE));
+const pages = Math.max(1, Math.ceil(recordSize / PAGE));
 const tone = party === "D" ? "dem" : party === "R" ? "rep" : "ind";
 // DW-NOMINATE first dimension runs from -1 (most liberal) to +1 (most conservative).
 const nominate = m.nominate_dim1;
 // Links that page or filter the voting record reload the page, so they name its tab (#record).
-const qs = (p: number, passage = passageOnly) => `?${new URLSearchParams({ ...(p > 1 ? { page: String(p) } : {}), ...(passage ? { votes: "passage" } : {}) })}#record`;
+const qs = (p: number, passage = passageOnly) => {
+  const q = new URLSearchParams({ ...(p > 1 ? { page: String(p) } : {}), ...(passage ? { votes: "passage" } : {}) }).toString();
+  return `${q ? `?${q}` : Astro.url.pathname}#record`;
+};
 const stateName = m.state ? (STATES[m.state] ?? m.state) : null;
 ---
 
@@ -114,7 +121,7 @@ const stateName = m.state ? (STATES[m.state] ?? m.state) : null;
         <Panel class="record-panel">
           <div data-tabs>
             <div class="tabbar">
-              <a class="tab-link" href="#record" aria-selected="true">Votes <span class="n">{(voteCount?.n ?? 0).toLocaleString("en-US")}</span></a>
+              <a class="tab-link" href="#record" aria-selected="true">Votes <span class="n">{recordSize.toLocaleString("en-US")}</span></a>
               <a class="tab-link" href="#sponsored">Sponsored bills <span class="n">{s?.sponsored ?? sponsored.length}</span></a>
               <a class="tab-link" href="#background">Background</a>
             </div>

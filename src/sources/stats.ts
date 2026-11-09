@@ -202,6 +202,29 @@ function overview(db: DatabaseSync) {
   );
 }
 
+// Every vote in each chamber's session, in order, for the margin timeline on a vote page:
+// one stored row instead of a scan of every roll call on each view.
+// Keyed '{congress}-{chamber}-{session}'; each entry is [id, roll, yea, nay, date, question].
+function voteTimelines(db: DatabaseSync) {
+  const out: Record<string, unknown[][]> = {};
+  for (const r of all<{ id: string; congress: number; chamber: string; session: number; roll_number: number; yea: number; nay: number; vote_date: string | null; question: string | null }>(
+    db,
+    "SELECT id, congress, chamber, session, roll_number, yea, nay, vote_date, question FROM roll_calls ORDER BY congress, chamber, session, roll_number",
+  )) {
+    (out[`${r.congress}-${r.chamber}-${r.session}`] ??= []).push([r.id, r.roll_number, r.yea, r.nay, r.vote_date, r.question]);
+  }
+  return out;
+}
+
+// Names, districts and photos of every member, so a page listing a vote's 435 or 100 voters
+// needn't look each one up. Each entry is [id, full name, last name, district, photo].
+function memberDirectory(db: DatabaseSync) {
+  return all<{ bioguide_id: string; full_name: string; last_name: string | null; district: number | null; photo_url: string | null }>(
+    db,
+    "SELECT bioguide_id, full_name, last_name, district, photo_url FROM members ORDER BY bioguide_id",
+  ).map((m) => [m.bioguide_id, m.full_name, m.last_name, m.district, m.photo_url]);
+}
+
 export async function syncStats(db: DatabaseSync): Promise<string> {
   const stats: Record<string, unknown> = {
     overview: overview(db),
@@ -211,6 +234,8 @@ export async function syncStats(db: DatabaseSync): Promise<string> {
     member_stats: memberStats(db),
     vote_margins: voteMargins(db),
     topic_trends: topicTrends(db),
+    vote_timelines: voteTimelines(db),
+    member_directory: memberDirectory(db),
   };
   const now = nowIso();
   transaction(db, () => {

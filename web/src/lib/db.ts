@@ -128,13 +128,50 @@ export interface MemberVote {
   photo_url: string | null;
 }
 
+// How each member voted on a roll call. Names and photos come from the member directory the
+// sync stores (one row), so this reads only the votes themselves; before the sync has stored
+// it, they're joined from the members table.
 export async function memberVotes(rollCallId: string): Promise<MemberVote[]> {
-  return rows<MemberVote>(
-    `SELECT mv.bioguide_id, mv.position, mv.detail, mv.party, mv.state,
-            m.full_name, m.last_name, m.district, m.photo_url
-       FROM member_votes mv LEFT JOIN members m ON m.bioguide_id = mv.bioguide_id
-      WHERE mv.roll_call_id = ?`,
+  const directory = await stat<[string, string, string | null, number | null, string | null][]>("member_directory");
+  if (!directory) {
+    return rows<MemberVote>(
+      `SELECT mv.bioguide_id, mv.position, mv.detail, mv.party, mv.state,
+              m.full_name, m.last_name, m.district, m.photo_url
+         FROM member_votes mv LEFT JOIN members m ON m.bioguide_id = mv.bioguide_id
+        WHERE mv.roll_call_id = ?`,
+      rollCallId,
+    );
+  }
+  const byId = new Map(directory.map((d) => [d[0], d]));
+  const votes = await rows<{ bioguide_id: string; position: string; detail: string | null; party: string | null; state: string | null }>(
+    "SELECT bioguide_id, position, detail, party, state FROM member_votes WHERE roll_call_id = ?",
     rollCallId,
+  );
+  return votes.map((v) => {
+    const d = byId.get(v.bioguide_id);
+    return { ...v, full_name: d?.[1] ?? null, last_name: d?.[2] ?? null, district: d?.[3] ?? null, photo_url: d?.[4] ?? null };
+  });
+}
+
+export interface TimelineVote {
+  id: string;
+  roll_number: number;
+  yea: number;
+  nay: number;
+  vote_date: string | null;
+  question: string | null;
+}
+
+// Every vote in a chamber's session, in order, from the timelines the sync stores.
+export async function sessionVotes(congress: number, chamber: string, session: number): Promise<TimelineVote[]> {
+  const timelines = await stat<Record<string, [string, number, number, number, string | null, string | null][]>>("vote_timelines");
+  const list = timelines?.[`${congress}-${chamber}-${session}`];
+  if (list) return list.map(([id, roll_number, yea, nay, vote_date, question]) => ({ id, roll_number, yea, nay, vote_date, question }));
+  return rows<TimelineVote>(
+    "SELECT id, roll_number, yea, nay, vote_date, question FROM roll_calls WHERE congress = ? AND chamber = ? AND session = ? ORDER BY roll_number",
+    congress,
+    chamber,
+    session,
   );
 }
 

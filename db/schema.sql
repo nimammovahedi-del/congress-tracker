@@ -181,6 +181,9 @@ CREATE TABLE IF NOT EXISTS roll_calls (
 );
 CREATE INDEX IF NOT EXISTS roll_calls_bill ON roll_calls (bill_id);
 CREATE INDEX IF NOT EXISTS roll_calls_date ON roll_calls (vote_date);
+-- A session's votes in order (vote pages), and the newest votes first (the votes list).
+CREATE INDEX IF NOT EXISTS roll_calls_session ON roll_calls (congress, chamber, session, roll_number);
+CREATE INDEX IF NOT EXISTS roll_calls_recent ON roll_calls (congress, vote_date, roll_number);
 
 CREATE TABLE IF NOT EXISTS member_votes (
   roll_call_id TEXT NOT NULL,

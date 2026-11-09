@@ -4,7 +4,7 @@ import TallyBar from "../../components/TallyBar.astro";
 import Term from "../../components/Term.astro";
 import VoteVisualizer from "../../components/VoteVisualizer.astro";
 import Layout from "../../layouts/Layout.astro";
-import { memberStats, memberVotes, row, rows, type RollCall } from "../../lib/db";
+import { memberStats, memberVotes, row, sessionVotes, type RollCall } from "../../lib/db";
 import { billNumberFromId, consoleDate, CONGRESS, officialVoteUrl } from "../../lib/format";
 import { explainQuestion, passed, ruleInfo, seatInfo, threshold } from "../../lib/votes";
 
@@ -21,12 +21,7 @@ const [votes, stats, bill, session] = await Promise.all([
   memberStats(),
   r.bill_id ? row<{ title: string; status: string }>("SELECT title, status FROM bills WHERE id = ?", r.bill_id) : null,
   // Every vote in this chamber's session, for the margin timeline at the top.
-  rows<{ id: string; roll_number: number; yea: number; nay: number; vote_date: string | null; question: string | null }>(
-    "SELECT id, roll_number, yea, nay, vote_date, question FROM roll_calls WHERE congress = ? AND chamber = ? AND session = ? ORDER BY roll_number",
-    r.congress,
-    r.chamber,
-    r.session,
-  ),
+  sessionVotes(r.congress, r.chamber, r.session),
 ]);
 
 const chamberName = r.chamber === "senate" ? "Senate" : "House";
