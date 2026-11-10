@@ -5,7 +5,7 @@ import StatusTag from "../../components/StatusTag.astro";
 import Term from "../../components/Term.astro";
 import Layout from "../../layouts/Layout.astro";
 import { memberStats, row, rows, type Member } from "../../lib/db";
-import { billNumber, consoleDate, memberTag, partyClass, PARTY, POSITION_LABELS, STATES } from "../../lib/format";
+import { billNumber, CONGRESS, consoleDate, memberTag, partyClass, PARTY, POSITION_LABELS, STATES } from "../../lib/format";
 import { CATEGORY_SQL, voteRef } from "../../lib/votes";
 
 const id = Astro.params.id ?? "";
@@ -20,12 +20,16 @@ const filter = passageOnly ? `AND (${CATEGORY_SQL}) = 'passage'` : "";
 const [stats, votes, voteCount, sponsored, terms] = await Promise.all([
   memberStats(),
   rows<{ id: string; vote_date: string | null; chamber: string; roll_number: number; question: string | null; result: string | null; bill_id: string | null; subject_ref: string | null; description: string | null; bill_title: string | null; position: string; detail: string | null }>(
+    // Walks roll calls newest first (roll_calls_recent) and stops after a page of this member's
+    // votes, rather than reading their whole record to sort it: ~75 rows instead of ~1,600.
     `SELECT r.id, r.vote_date, r.chamber, r.roll_number, r.question, r.result, r.bill_id, r.subject_ref, r.description,
             b.title AS bill_title, mv.position, mv.detail
-       FROM member_votes mv JOIN roll_calls r ON r.id = mv.roll_call_id LEFT JOIN bills b ON b.id = r.bill_id
-      WHERE mv.bioguide_id = ? ${filter}
+       FROM roll_calls r CROSS JOIN member_votes mv ON mv.roll_call_id = r.id AND mv.bioguide_id = ?
+            LEFT JOIN bills b ON b.id = r.bill_id
+      WHERE r.congress = ? ${filter}
       ORDER BY r.vote_date DESC, r.roll_number DESC LIMIT ? OFFSET ?`,
     id,
+    CONGRESS,
     PAGE,
     (page - 1) * PAGE,
   ),
